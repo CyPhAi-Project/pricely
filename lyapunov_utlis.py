@@ -18,6 +18,13 @@ class DRealVars(NamedTuple):
     dxdt_s: Variable
 
 
+class DRealInputs(NamedTuple):
+    u: Variable
+    lb: Variable
+    ub: Variable
+    u_s: Variable
+
+
 class LyapunovVerifier:
     def __init__(
             self,
@@ -26,9 +33,6 @@ class LyapunovVerifier:
             config: Config = None) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
         assert u_roi is None or (u_roi.shape[0] == 2 and x_roi.shape[1] >= 1)
-        if u_roi is not None:
-            raise NotImplementedError(
-                "System with input is not supported yet.")
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
@@ -37,12 +41,23 @@ class LyapunovVerifier:
             DRealVars(
                 x=Variable(f"x{pretty_sub(i)}"),
                 der_lya=Variable(f"∂V/∂x{pretty_sub(i)}"),
-                lb=Variable(f"lb{pretty_sub(i)}"),
-                ub=Variable(f"ub{pretty_sub(i)}"),
+                lb=Variable(f"x̲{pretty_sub(i)}"),
+                ub=Variable(f"x̄{pretty_sub(i)}"),
                 x_s=Variable(f"x̃{pretty_sub(i)}"),
-                dxdt_s=Variable(f"f{pretty_sub(i)}(x̃)")
+                dxdt_s=Variable(f"f{pretty_sub(i)}(x̃,ũ)")
             ) for i in range(x_dim)
         ]
+
+        u_dim = u_roi.shape[1] if u_roi is not None else 0
+        self._all_inputs = [
+            DRealInputs(
+                u=Variable(f"u{pretty_sub(i)}"),
+                lb=Variable(f"u̲{pretty_sub(i)}"),
+                ub=Variable(f"ū{pretty_sub(i)}"),
+                u_s=Variable(f"ũ{pretty_sub(i)}"),
+            ) for i in range(u_dim)
+        ]
+
         self._smt_tpls = self._init_lyapunov_template(x_roi, u_roi)
 
         self._lya_cand_expr = None
@@ -68,14 +83,22 @@ class LyapunovVerifier:
 
     def find_cex(
         self,
-        lb_j: np.ndarray,
-        ub_j: np.ndarray,
-        x_j: np.ndarray,
+        xu_region_j: Tuple[np.ndarray, np.ndarray, np.ndarray],
         dxdt_j: np.ndarray,
         lip_expr: Union[float, Expr]
-    ) -> Optional[Box]:
+    ) -> Optional[np.ndarray]:
         assert self._lya_cand_expr is not None \
             and self._der_lya_cand_expr is not None
+        x_dim, u_dim = len(self._all_vars), len(self._all_inputs)
+        xu_j, xu_lb_j, xu_ub_j = xu_region_j
+        assert len(xu_j) == x_dim + u_dim
+        assert len(xu_lb_j) == x_dim + u_dim
+        assert len(xu_ub_j) == x_dim + u_dim
+
+        x_j, u_j = xu_j[0:x_dim], xu_j[x_dim:]
+        x_lb_j, u_lb_j = xu_lb_j[0:x_dim], xu_lb_j[x_dim:]
+        x_ub_j, u_ub_j = xu_ub_j[0:x_dim], xu_ub_j[x_dim:]
+
         if isinstance(lip_expr, float):
             lip_expr = Expr(lip_expr)
 
@@ -83,17 +106,25 @@ class LyapunovVerifier:
             [(self._lya_var, self._lya_cand_expr)] + \
             [(self._lip_sq_var, lip_expr**2)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_expr)] + \
-            [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, lb_j)] + \
-            [(xi.ub, Expr(vi)) for xi, vi in zip(self._all_vars, ub_j)] + \
+            [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
+            [(xi.ub, Expr(vi)) for xi, vi in zip(self._all_vars, x_ub_j)] + \
             [(xi.x_s, Expr(vi)) for xi, vi in zip(self._all_vars, x_j)] + \
-            [(xi.dxdt_s, Expr(vi)) for xi, vi in zip(self._all_vars, dxdt_j)]
+            [(xi.dxdt_s, Expr(vi)) for xi, vi in zip(self._all_vars, dxdt_j)] + \
+            [(ui.lb, Expr(vi)) for ui, vi in zip(self._all_inputs, u_lb_j)] + \
+            [(ui.ub, Expr(vi)) for ui, vi in zip(self._all_inputs, u_ub_j)] + \
+            [(ui.u_s, Expr(vi)) for ui, vi in zip(self._all_inputs, u_j)]
         sub_dict = dict(sub_pairs)
 
         for query_tpl in self._smt_tpls:
             smt_query = query_tpl.Substitute(sub_dict)
             result = CheckSatisfiability(smt_query, self._config)
             if result:
-                return result
+                xu_vars  = [var.x for var in self._all_vars] \
+                    + [var.u for var in self._all_inputs]
+                box_np = np.asfarray(
+                    [[result[var].lb(), result[var].ub()] for var in xu_vars],
+                    dtype=np.float32).transpose()
+                return box_np
         return None
 
     def _init_lyapunov_template(
@@ -104,10 +135,7 @@ class LyapunovVerifier:
 
         x_vars = [var.x for var in self._all_vars]
         der_lya_vars = [var.der_lya for var in self._all_vars]
-        lb_vars = [var.lb for var in self._all_vars]
-        ub_vars = [var.ub for var in self._all_vars]
-        x_s_vars = [var.x_s for var in self._all_vars]
-        dxdt_s_vars = [var.dxdt_s for var in self._all_vars]
+        u_vars = [var.u for var in self._all_inputs]
 
         # TODO remove hard coded ball (region of interest)
         ball_lb = 0.2
@@ -120,24 +148,29 @@ class LyapunovVerifier:
             radius_sq >= ball_lb**2,
             radius_sq <= ball_ub**2,
             *(logical_and(x >= lb, x <= ub)
-              for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1]))
+              for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1])),
+            *(logical_and(u >= lb, u <= ub)
+              for u, lb, ub in zip(u_vars, u_roi[0], u_roi[1]))
         )
 
         in_nbr_pred = logical_and(
-            *(logical_and(x >= lb, x <= ub)
-              for x, lb, ub in zip(x_vars, lb_vars, ub_vars)))
+            *(logical_and(var.x >= var.lb, var.x <= var.ub)
+              for var in self._all_vars),
+            *(logical_and(var.u >= var.lb, var.u <= var.ub)
+              for var in self._all_inputs))
 
-        lie_der_lya = sum(der_lya_i*dxdt_i
-                          for der_lya_i, dxdt_i in zip(der_lya_vars, dxdt_s_vars))
+        lie_der_lya = sum(var.der_lya*var.dxdt_s
+                          for var in self._all_vars)
 
         der_lya_l2_sq = sum(e*e for e in der_lya_vars)
-        dist_sq = sum((x-v)*(x-v) for x, v in zip(x_vars, x_s_vars))
-        trig_cond = der_lya_l2_sq*dist_sq * \
-            self._lip_sq_var >= lie_der_lya*lie_der_lya
+        dist_sq = \
+            sum((var.x-var.x_s)**2 for var in self._all_vars) + \
+            sum((var.u-var.u_s)**2 for var in self._all_inputs)
+        trig_cond = der_lya_l2_sq*dist_sq*self._lip_sq_var >= lie_der_lya**2
         # Validity Cond: forall x in [lb, ub].
-        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃) < 0 /\ (|∂V/∂x||x-x̃|Lip)² < |∂V/∂x⋅f(x̃)|²
+        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip)² < |∂V/∂x⋅f(x̃,ũ)|²
         # SMT Cond: exists x in [lb, ub].
-        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃)>= 0 \/ (|∂V/∂x||x-x̃|Lip)²>= |∂V/∂x⋅f(x̃)|²
+        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ (|∂V/∂x||(x-x̃,u-ũ)|Lip)²>= |∂V/∂x⋅f(x̃,ũ)|²
         return [
             logical_and(in_roi_pred, in_nbr_pred, cond)
             for cond in [self._lya_var <= 0, lie_der_lya >= 0, trig_cond]]
@@ -147,7 +180,7 @@ def split_regions(
     x_values: np.ndarray,
     x_lbs: np.ndarray,
     x_ubs: np.ndarray,
-    sat_regions: Sequence[Tuple[int, Box]]
+    sat_regions: Sequence[Tuple[int, np.ndarray]]
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     new_cexs, new_lbs, new_ubs = [], [], []
     for j, box_j in sat_regions:
@@ -178,11 +211,11 @@ def split_regions(
 
 def split_region(
     region: Tuple[np.ndarray, np.ndarray, np.ndarray],
-    box: Box
+    box: np.ndarray
 ) -> Optional[Tuple[np.ndarray, int, float]]:
-    cex_lb, cex_ub = np.asfarray(
-        [[itvl.lb(), itvl.ub()] for itvl in box.values()],
-        dtype=np.float32).transpose()
+    warnings.warn(
+        "TODO Current code assumes a fixed order of variables in SAT instance.")
+    cex_lb, cex_ub = box
     x, lb, ub = region
     if np.all(np.logical_and(cex_lb <= x, x <= cex_ub)):
         return

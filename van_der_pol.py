@@ -102,7 +102,7 @@ def main():
         f"Prepare {'x'.join(str(n) for n in x_part)} equispaced training samples: ",
         end="", flush=True)
     t_start = time.perf_counter()
-    x, lb_pts, ub_pts = gen_equispace_regions(X_ROI, x_part)
+    x, lb_pts, ub_pts = gen_equispace_regions(x_part, X_ROI)
     x = x.to(DEVICE)
     dxdt_bbox = f_bbox(x)
     print(f"{time.perf_counter() - t_start:.3f}s")

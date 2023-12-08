@@ -1,3 +1,4 @@
+import itertools
 import os
 from typing import Sequence, Tuple
 
@@ -190,23 +191,35 @@ def dtanh(s: torch.Tensor) -> torch.Tensor:
 
 
 def gen_equispace_regions(
+    part: Sequence[int],
     x_roi: torch.Tensor,
-    x_part: Sequence[int]
+    u_roi: torch.Tensor = None
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    assert x_roi.shape == (2, len(x_part))
-    x_dim = len(x_part)
+    assert x_roi.shape[0] == 2
+    x_dim = x_roi.shape[1]
+    if u_roi is None:
+        u_dim = 0
+    else:
+        assert u_roi.shape[0] == 2
+        u_dim = u_roi.shape[1]       
+    assert len(part) == x_dim + u_dim
+
     # generate dataset (values of x):
-    axes_cuts = (torch.linspace(
-        x_roi[0, i], x_roi[1, i], x_part[i]+1,
+    x_axes_cuts = (torch.linspace(
+        x_roi[0, i], x_roi[1, i], part[i]+1,
         dtype=torch.float32) for i in range(x_dim))
+    u_axes_cuts = (torch.linspace(
+        u_roi[0, i], u_roi[1, i], part[x_dim+i]+1,
+        dtype=torch.float32) for i in range(u_dim))
     # xx = ((b_i[:-1] + b_i[1:]) / 2 for b_i in bound_pts)
     bound_pts = torch.cartesian_prod(
-        *axes_cuts).reshape(tuple(n+1 for n in x_part) + (x_dim,))
+        *itertools.chain(x_axes_cuts, u_axes_cuts))
+    bound_pts.resize_(tuple(n+1 for n in part) + (len(part),))
 
-    lb_pts = bound_pts[[slice(0, -1)]*x_dim].reshape((-1, x_dim))
-    ub_pts = bound_pts[[slice(1, None)]*x_dim].reshape((-1, x_dim))
-    x = (lb_pts + ub_pts) / 2
-    return x, lb_pts, ub_pts
+    lb_pts = bound_pts[[slice(0, -1)]*len(part)].reshape((-1, len(part)))
+    ub_pts = bound_pts[[slice(1, None)]*len(part)].reshape((-1, len(part)))
+    xu = (lb_pts + ub_pts) / 2
+    return xu, lb_pts, ub_pts
 
 
 class KnownLyapunovNet:
