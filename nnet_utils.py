@@ -207,3 +207,49 @@ def gen_equispace_regions(
     ub_pts = bound_pts[[slice(1, None)]*x_dim].reshape((-1, x_dim))
     x = (lb_pts + ub_pts) / 2
     return x, lb_pts, ub_pts
+
+
+class KnownLyapunovNet:
+    """ Known Lyapunov net from the NeuRIPS 2022 paper """
+
+    def __init__(self, W1, b1, W2, b2):
+        self.W1 = W1
+        self.b1 = b1
+        self.W2 = W2
+        self.b2 = b2
+
+    def _loss(self, x_values: torch.Tensor, dxdt_values: torch.Tensor) -> float:
+        lya_0_value = self.predict(
+            torch.zeros_like(x_values[0], device=DEVICE))
+        lya_values = self.predict(x_values)
+        p_lya_px_values = torch.autograd.grad(
+            lya_values, x_values,
+            grad_outputs=torch.ones_like(lya_values))[0]
+        lie_der_values = (p_lya_px_values * dxdt_values).sum(dim=1)
+        lya_risk = F.relu(-lya_values).mean() \
+            + F.relu(lie_der_values).mean() \
+            + lya_0_value.pow(2)
+        return lya_risk.item()
+
+    def fit_loop(self, X: torch.Tensor, y: torch.Tensor, max_epoch: int = 10, copy: bool = True) -> Sequence[float]:
+        lya_risk = self._loss(X, y)
+        return [lya_risk]*max_epoch
+
+    def predict(self, X: torch.Tensor) -> torch.Tensor:
+        linear1 = X @ self.W1.T + self.b1
+        hidden1 = torch.tanh(linear1)
+        linear2 = hidden1 @ self.W2.T + self.b2
+        lya = torch.tanh(linear2)
+        return lya
+
+    def dreal_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
+        W1 = self.W1.cpu().numpy().squeeze()
+        b1 = self.b1.cpu().numpy().squeeze()
+        W2 = self.W2.cpu().numpy().squeeze()
+        b2 = self.b2.cpu().numpy().squeeze()
+
+        linear1 = x_vars @ W1.T + b1
+        hidden1 = [dreal.tanh(expr) for expr in linear1]
+        linear2 = hidden1 @ W2.T + b2
+        lya_expr = dreal.tanh(linear2)
+        return lya_expr
