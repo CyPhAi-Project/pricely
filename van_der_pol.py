@@ -142,6 +142,7 @@ def main():
 
     x_values_np, x_lbs_np, x_ubs_np, cex_regions = cegus_lyapunov(
         lya, X_ROI, (x, lb_pts, ub_pts), f_bbox, LIP_BB,
+        norm_lb=0.2, norm_ub=1.2,
         max_epochs=20, max_iter_learn=1000)
 
     num_samples = len(x_values_np)

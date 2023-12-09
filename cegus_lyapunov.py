@@ -12,6 +12,8 @@ def cegus_lyapunov(
         x_regions: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         f_bbox: Callable[[torch.Tensor], torch.Tensor],
         lip_bbox: float,
+        norm_lb: float = 0.0,
+        norm_ub: float = torch.inf,
         max_epochs: int = 10,
         max_iter_learn: int = 10):
     null_tensor = torch.tensor([], device=DEVICE)
@@ -23,6 +25,7 @@ def cegus_lyapunov(
         lya=lya, x_roi=x_roi, u_roi=null_roi,
         xu_cover=x_regions,
         f_bbox=new_f_bbox, lip_bbox=lip_bbox,
+        norm_lb=norm_lb, norm_ub=norm_ub,
         max_epochs=max_epochs, max_iter_learn=max_iter_learn
     )
 
@@ -33,12 +36,16 @@ def cegus_lyapunov_control(
         xu_cover: Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
         f_bbox: Callable[[torch.Tensor], torch.Tensor],
         lip_bbox: float,
+        norm_lb: float = 0.0,
+        norm_ub: float = torch.inf,
         max_epochs: int = 10,
         max_iter_learn: int = 10):
     x_dim, u_dim = x_roi.shape[1], u_roi.shape[1]
     verifier = LyapunovVerifier(
         x_roi=x_roi.cpu().numpy(),
-        u_roi=u_roi.cpu().numpy())
+        u_roi=u_roi.cpu().numpy(),
+        norm_lb=norm_lb, norm_ub=norm_ub
+    )
 
     lya_risks = []
     xu_values, xu_lbs, xu_ubs = xu_cover

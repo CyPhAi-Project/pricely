@@ -29,10 +29,12 @@ class LyapunovVerifier:
     def __init__(
             self,
             x_roi: np.ndarray,
-            u_roi: np.ndarray = None,
+            u_roi: np.ndarray,
+            norm_lb: float = 0.0,
+            norm_ub: float = np.inf,
             config: Config = None) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
-        assert u_roi is None or (u_roi.shape[0] == 2 and x_roi.shape[1] >= 1)
+        assert u_roi.shape[0] == 2
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
@@ -58,7 +60,7 @@ class LyapunovVerifier:
             ) for i in range(u_dim)
         ]
 
-        self._smt_tpls = self._init_lyapunov_template(x_roi, u_roi)
+        self._smt_tpls = self._init_lyapunov_template(x_roi, u_roi, norm_lb, norm_ub)
 
         self._lya_cand_expr = None
         self._der_lya_cand_expr = None
@@ -130,23 +132,20 @@ class LyapunovVerifier:
     def _init_lyapunov_template(
             self,
             x_roi: np.ndarray,
-            u_roi: np.ndarray):
+            u_roi: np.ndarray,
+            norm_lb: float = 0.0,
+            norm_ub: float = np.inf
+        ):
         assert x_roi.shape[1] >= 1
 
         x_vars = [var.x for var in self._all_vars]
         der_lya_vars = [var.der_lya for var in self._all_vars]
         u_vars = [var.u for var in self._all_inputs]
 
-        # TODO remove hard coded ball (region of interest)
-        ball_lb = 0.2
-        ball_ub = 1.2
-        warnings.warn(
-            f"Warning: hardcoded region of interest {ball_lb} <= |x| <= {ball_ub}.")
-
         radius_sq = sum(x*x for x in x_vars)
         in_roi_pred = logical_and(
-            radius_sq >= ball_lb**2,
-            radius_sq <= ball_ub**2,
+            radius_sq >= norm_lb**2,
+            radius_sq <= norm_ub**2,
             *(logical_and(x >= lb, x <= ub)
               for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1])),
             *(logical_and(u >= lb, u <= ub)
@@ -213,8 +212,6 @@ def split_region(
     region: Tuple[np.ndarray, np.ndarray, np.ndarray],
     box: np.ndarray
 ) -> Optional[Tuple[np.ndarray, int, float]]:
-    warnings.warn(
-        "TODO Current code assumes a fixed order of variables in SAT instance.")
     cex_lb, cex_ub = box
     x, lb, ub = region
     if np.all(np.logical_and(cex_lb <= x, x <= cex_ub)):
