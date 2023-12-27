@@ -1,11 +1,14 @@
-import itertools
 import os
 from typing import Sequence, Tuple
 
 import dreal
+import numpy as np
 import torch
 import torch.nn.functional as F
 import tqdm
+
+from lyapunov_utlis import PLyapunovLearner
+
 
 # Ensure deterministic behavior
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -130,7 +133,7 @@ class NeuralNetRegressor:
         return y
 
 
-class LyapunovNetRegressor(NeuralNetRegressor):
+class LyapunovNetRegressor(NeuralNetRegressor, PLyapunovLearner):
     def __init__(self, module: LyapunovNet, optimizer: torch.optim.Optimizer) -> None:
         super().__init__(module, None, optimizer)
 
@@ -144,9 +147,9 @@ class LyapunovNetRegressor(NeuralNetRegressor):
 
         # Explicitly compute values of partial derivative
         """
-        p_lya_p_hidden = dtanh(lya_values) @ self._model.layer2.weight
-        p_hidden_p_layer1 = dtanh(torch.tanh(
-            x_values @ self._model.layer1.weight.t() + self._model.layer1.bias))
+        p_lya_p_hidden = (1.0 - lya_values**2) @ self._model.layer2.weight
+        p_hidden_p_layer1 = (1.0 - torch.tanh(
+            x_values @ self._model.layer1.weight.t() + self._model.layer1.bias)**2)
         p_layer1_p_x = self._model.layer1.weight
         # Use element-wise multiplication * for the hidden layer because tanh is element-wise
         p_lya_px_values = (p_lya_p_hidden * p_hidden_p_layer1) @ p_layer1_p_x
@@ -171,7 +174,7 @@ class LyapunovNetRegressor(NeuralNetRegressor):
 
         return lya_risk.item()
 
-    def dreal_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
+    def lya_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
         # Get weights and biases
         w1 = self.model.layer1.weight.data.cpu().numpy().squeeze()
         w2 = self.model.layer2.weight.data.cpu().numpy().squeeze()
@@ -183,53 +186,45 @@ class LyapunovNetRegressor(NeuralNetRegressor):
         z2 = b2 + a1 @ w2.T
         lya_expr = dreal.tanh(z2)
         return lya_expr
+    
+    def control(self, X: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("TODO")
 
-
-def dtanh(s: torch.Tensor) -> torch.Tensor:
-    # Derivative of activation
-    return 1.0 - s**2
+    def ctrl_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+        raise NotImplementedError("TODO")
 
 
 def gen_equispace_regions(
     part: Sequence[int],
-    x_roi: torch.Tensor,
-    u_roi: torch.Tensor = None
+    x_roi: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     assert x_roi.shape[0] == 2
     x_dim = x_roi.shape[1]
-    if u_roi is None:
-        u_dim = 0
-    else:
-        assert u_roi.shape[0] == 2
-        u_dim = u_roi.shape[1]       
-    assert len(part) == x_dim + u_dim
+    assert len(part) == x_dim
 
     # generate dataset (values of x):
     x_axes_cuts = (torch.linspace(
         x_roi[0, i], x_roi[1, i], part[i]+1,
         dtype=torch.float32) for i in range(x_dim))
-    u_axes_cuts = (torch.linspace(
-        u_roi[0, i], u_roi[1, i], part[x_dim+i]+1,
-        dtype=torch.float32) for i in range(u_dim))
     # xx = ((b_i[:-1] + b_i[1:]) / 2 for b_i in bound_pts)
-    bound_pts = torch.cartesian_prod(
-        *itertools.chain(x_axes_cuts, u_axes_cuts))
+    bound_pts = torch.cartesian_prod(*x_axes_cuts)
     bound_pts.resize_(tuple(n+1 for n in part) + (len(part),))
 
     lb_pts = bound_pts[[slice(0, -1)]*len(part)].reshape((-1, len(part)))
     ub_pts = bound_pts[[slice(1, None)]*len(part)].reshape((-1, len(part)))
-    xu = (lb_pts + ub_pts) / 2
-    return xu, lb_pts, ub_pts
+    x = (lb_pts + ub_pts) / 2
+    return x, lb_pts, ub_pts
 
 
-class KnownLyapunovNet:
+class KnownLyapunovNet(PLyapunovLearner):
     """ Known Lyapunov net from the NeuRIPS 2022 paper """
 
-    def __init__(self, W1, b1, W2, b2):
+    def __init__(self, W1, b1, W2, b2, ctrl = None):
         self.W1 = W1
         self.b1 = b1
         self.W2 = W2
         self.b2 = b2
+        self.ctrl = ctrl
 
     def _loss(self, x_values: torch.Tensor, dxdt_values: torch.Tensor) -> float:
         lya_0_value = self.predict(
@@ -255,7 +250,7 @@ class KnownLyapunovNet:
         lya = torch.tanh(linear2)
         return lya
 
-    def dreal_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
+    def lya_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
         W1 = self.W1.cpu().numpy().squeeze()
         b1 = self.b1.cpu().numpy().squeeze()
         W2 = self.W2.cpu().numpy().squeeze()
@@ -266,3 +261,35 @@ class KnownLyapunovNet:
         linear2 = hidden1 @ W2.T + b2
         lya_expr = dreal.tanh(linear2)
         return lya_expr
+
+    def control(self, X: torch.Tensor) -> torch.Tensor:
+        if self.ctrl is not None:
+            return self.ctrl.apply(X)   
+        else:
+            return torch.tensor([], device=DEVICE).reshape(len(X), 0)
+
+    def ctrl_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+        assert self.ctrl is not None
+        return self.ctrl.dreal_exprs(x_vars)
+
+
+class KnownControl:
+    def __init__(self, C: torch.Tensor, K: torch.Tensor, b: torch.Tensor):
+        self.C = torch.atleast_2d(C)
+        self.K = torch.atleast_2d(K)
+        self.b = b
+
+    def apply(self, X: torch.Tensor) -> torch.Tensor:
+        linear = X @ self.K.T + self.b
+        hidden = torch.atleast_2d(torch.tanh(linear))
+        return hidden @ self.C.T
+
+    def dreal_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+        C = self.C.cpu().numpy().squeeze()
+        K = self.K.cpu().numpy().squeeze()
+        b = self.b.cpu().numpy().squeeze()
+
+        linear = np.atleast_1d(x_vars @ K + b)
+        hidden = [dreal.tanh(v) for v in linear]
+        ctrl_expr_arr = C.dot(hidden)
+        return ctrl_expr_arr.tolist()

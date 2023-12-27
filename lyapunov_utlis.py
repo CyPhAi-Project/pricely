@@ -1,7 +1,7 @@
-from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and
+import abc
+from dreal import CheckSatisfiability, Config, Expression as Expr, Variable, logical_and
 import numpy as np
-from typing import NamedTuple, Optional, Sequence, Tuple, Union
-import warnings
+from typing import NamedTuple, Optional, Protocol, Sequence, Tuple, Union
 
 
 def pretty_sub(i: int) -> str:
@@ -20,9 +20,17 @@ class DRealVars(NamedTuple):
 
 class DRealInputs(NamedTuple):
     u: Variable
-    lb: Variable
-    ub: Variable
     u_s: Variable
+
+
+class PLyapunovLearner(Protocol):
+    @abc.abstractmethod
+    def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
+        raise NotImplementedError
 
 
 class LyapunovVerifier:
@@ -54,16 +62,15 @@ class LyapunovVerifier:
         self._all_inputs = [
             DRealInputs(
                 u=Variable(f"u{pretty_sub(i)}"),
-                lb=Variable(f"u̲{pretty_sub(i)}"),
-                ub=Variable(f"ū{pretty_sub(i)}"),
-                u_s=Variable(f"ũ{pretty_sub(i)}"),
+                u_s=Variable(f"ũ{pretty_sub(i)}")
             ) for i in range(u_dim)
         ]
 
         self._smt_tpls = self._init_lyapunov_template(x_roi, u_roi, norm_lb, norm_ub)
 
         self._lya_cand_expr = None
-        self._der_lya_cand_expr = None
+        self._der_lya_cand_exprs = [None]*x_dim
+        self._ctrl_exprs = [None]*u_dim
 
         if config is not None:
             self._config = config
@@ -73,33 +80,35 @@ class LyapunovVerifier:
             self._config.use_local_optimization = True
             self._config.precision = 1e-6
 
-    def set_lyapunov_candidate(self, lya):
+    def set_lyapunov_candidate(self, lya: PLyapunovLearner):
         x_vars = [xi.x for xi in self._all_vars]
-        self._lya_cand_expr = lya.dreal_expr(x_vars)
-        self._der_lya_cand_expr = [
+        self._lya_cand_expr = lya.lya_expr(x_vars)
+        self._der_lya_cand_exprs = [
             self._lya_cand_expr.Differentiate(x) for x in x_vars]
+        if len(self._all_inputs) > 0:
+            self._ctrl_exprs = lya.ctrl_exprs(x_vars)
 
     def reset_lyapunov_candidate(self):
         self._lya_cand_expr = None
-        self._der_lya_cand_expr = None
+        self._der_lya_cand_exprs = [None]*len(self._all_vars)
+        self._ctrl_exprs = [None]*len(self._all_inputs)
 
     def find_cex(
         self,
-        xu_region_j: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        x_region_j: Tuple[np.ndarray, np.ndarray, np.ndarray],
+        u_j: np.ndarray,
         dxdt_j: np.ndarray,
         lip_expr: Union[float, Expr]
     ) -> Optional[np.ndarray]:
         assert self._lya_cand_expr is not None \
-            and self._der_lya_cand_expr is not None
+            and all(e is not None for e in self._der_lya_cand_exprs)
         x_dim, u_dim = len(self._all_vars), len(self._all_inputs)
-        xu_j, xu_lb_j, xu_ub_j = xu_region_j
-        assert len(xu_j) == x_dim + u_dim
-        assert len(xu_lb_j) == x_dim + u_dim
-        assert len(xu_ub_j) == x_dim + u_dim
-
-        x_j, u_j = xu_j[0:x_dim], xu_j[x_dim:]
-        x_lb_j, u_lb_j = xu_lb_j[0:x_dim], xu_lb_j[x_dim:]
-        x_ub_j, u_ub_j = xu_ub_j[0:x_dim], xu_ub_j[x_dim:]
+        x_j, x_lb_j, x_ub_j = x_region_j
+        assert len(x_j) == x_dim
+        assert len(x_lb_j) == x_dim
+        assert len(x_ub_j) == x_dim
+        assert len(u_j) == u_dim
+        assert not (u_dim == 0 and self._ctrl_exprs is None)
 
         if isinstance(lip_expr, float):
             lip_expr = Expr(lip_expr)
@@ -107,13 +116,12 @@ class LyapunovVerifier:
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
             [(self._lip_sq_var, lip_expr**2)] + \
-            [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_expr)] + \
+            [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
             [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
             [(xi.ub, Expr(vi)) for xi, vi in zip(self._all_vars, x_ub_j)] + \
             [(xi.x_s, Expr(vi)) for xi, vi in zip(self._all_vars, x_j)] + \
             [(xi.dxdt_s, Expr(vi)) for xi, vi in zip(self._all_vars, dxdt_j)] + \
-            [(ui.lb, Expr(vi)) for ui, vi in zip(self._all_inputs, u_lb_j)] + \
-            [(ui.ub, Expr(vi)) for ui, vi in zip(self._all_inputs, u_ub_j)] + \
+            [(ui.u, ei) for ui, ei in zip(self._all_inputs, self._ctrl_exprs)] + \
             [(ui.u_s, Expr(vi)) for ui, vi in zip(self._all_inputs, u_j)]
         sub_dict = dict(sub_pairs)
 
@@ -121,10 +129,9 @@ class LyapunovVerifier:
             smt_query = query_tpl.Substitute(sub_dict)
             result = CheckSatisfiability(smt_query, self._config)
             if result:
-                xu_vars  = [var.x for var in self._all_vars] \
-                    + [var.u for var in self._all_inputs]
+                x_vars  = [var.x for var in self._all_vars]
                 box_np = np.asfarray(
-                    [[result[var].lb(), result[var].ub()] for var in xu_vars],
+                    [[result[var].lb(), result[var].ub()] for var in x_vars],
                     dtype=np.float32).transpose()
                 return box_np
         return None
@@ -147,16 +154,11 @@ class LyapunovVerifier:
             radius_sq >= norm_lb**2,
             radius_sq <= norm_ub**2,
             *(logical_and(x >= lb, x <= ub)
-              for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1])),
-            *(logical_and(u >= lb, u <= ub)
-              for u, lb, ub in zip(u_vars, u_roi[0], u_roi[1]))
-        )
+              for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1])))
 
         in_nbr_pred = logical_and(
             *(logical_and(var.x >= var.lb, var.x <= var.ub)
-              for var in self._all_vars),
-            *(logical_and(var.u >= var.lb, var.u <= var.ub)
-              for var in self._all_inputs))
+              for var in self._all_vars))
 
         lie_der_lya = sum(var.der_lya*var.dxdt_s
                           for var in self._all_vars)
