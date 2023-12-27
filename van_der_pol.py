@@ -11,7 +11,8 @@ import torch
 
 from cegus_lyapunov import cegus_lyapunov
 from lyapunov_learner_nnet import KnownLyapunovNet, LyapunovNetRegressor
-from nnet_utils import DEVICE, DynamicsNet, LyapunovNet, NeuralNetRegressor, gen_equispace_regions
+from lyapunov_verifier import SMTVerifier
+from nnet_utils import DEVICE, LyapunovNet, gen_equispace_regions
 
 
 KNOWN_LYA = KnownLyapunovNet(
@@ -41,45 +42,7 @@ KNOWN_LYA = KnownLyapunovNet(
 )
 
 
-def training_phase(
-    f_nnet: NeuralNetRegressor,
-    x: torch.Tensor,
-    dxdt: torch.Tensor
-) -> float:
-    losses = f_nnet.fit_loop(x, dxdt, max_epoch=1000, copy=False)
-
-    # train more epoches if needed as we need alpha to be very small
-    f_nnet.optimizer = torch.optim.Adam(
-        f_nnet.model.parameters(), lr=0.001)  # Change optimizer
-    losses = losses + f_nnet.fit_loop(x, dxdt, max_epoch=50, copy=False)
-
-    plt.yscale("log")
-    plt.plot(losses)
-    plt.savefig("losses.png")
-    plt.clf()
-
-    dxdt_nnet = f_nnet.predict(x, copy=False)
-    alpha_all = torch.norm(dxdt_nnet - dxdt, dim=1)
-    alpha_max = torch.max(alpha_all).item()
-    return alpha_max
-
-
-def testing_phase(
-    f_nnet: NeuralNetRegressor,
-    x: torch.Tensor,
-    dxdt: torch.Tensor
-) -> float:
-    # output of FNN
-    dxdt_nnet = f_nnet.predict(x, copy=False)
-
-    # maximum of loss
-    loss_all = torch.norm(dxdt_nnet - dxdt, dim=1)
-    alpha = torch.max(loss_all).item()
-    return alpha
-
-
 def main():
-    """Learning the dynamics with NNs"""
     # Actual dynamical system
     X_DIM = 2
     X_ROI = torch.Tensor([
@@ -103,34 +66,8 @@ def main():
         f"Prepare {'x'.join(str(n) for n in x_part)} equispaced training samples: ",
         end="", flush=True)
     t_start = time.perf_counter()
-    x, lb_pts, ub_pts = gen_equispace_regions(x_part, X_ROI)
-    x = x.to(DEVICE)
-    dxdt_bbox = f_bbox(x)
+    x_regions = gen_equispace_regions(x_part, X_ROI)
     print(f"{time.perf_counter() - t_start:.3f}s")
-
-    print("Training:")
-    # NN: 1 hidden layers with 100 neurons each layer
-    dyn_net = DynamicsNet(n_input=X_DIM+U_DIM, n_hidden1=100, n_output=X_DIM)
-    f_nnet = NeuralNetRegressor(
-        module=dyn_net,
-        criterion=torch.nn.MSELoss(reduction='sum'),
-        optimizer=torch.optim.Adam(dyn_net.parameters(), lr=0.1)
-    )
-    """
-    alpha_max = training_phase(f_nnet, x, dxdt_bbox)
-    print(f"Max alpha in training set: {alpha_max}")
-
-    # generate testing dataset
-    x_part = (2400, 2400)
-    X_ROI = torch.Tensor([
-        [-1.2, -1.2],  # Lower bounds
-        [1.2, 1.2]  # Upper bounds
-    ])
-    x = gen_equispace_regions(X_ROI, x_part)
-    dxdt_bbox = f_bbox(x)
-    alpha_max = testing_phase(f_nnet, x, dxdt_bbox)
-    print(f"Max alpha in testing set: {alpha_max}")
-    """
 
     if True:
         lya = KNOWN_LYA
@@ -141,10 +78,15 @@ def main():
             optimizer=torch.optim.Adam(lya_net.parameters(), lr=10E-5)
         )
 
-    x_values_np, x_lbs_np, x_ubs_np, cex_regions = cegus_lyapunov(
-        lya, X_ROI, (x, lb_pts, ub_pts), f_bbox, LIP_BB,
-        norm_lb=0.2, norm_ub=1.2,
+    verifier = SMTVerifier(
+        x_roi=X_ROI.cpu().numpy(),
+        norm_lb=0.2, norm_ub=1.2)
+
+    x_regions_np, cex_regions = cegus_lyapunov(
+        lya, verifier, x_regions, f_bbox, LIP_BB,
         max_epochs=20, max_iter_learn=1000)
+
+    x_values_np, x_lbs_np, x_ubs_np = x_regions_np[:, 0], x_regions_np[:, 1], x_regions_np[:, 2]
 
     num_samples = len(x_values_np)
     assert X_ROI.shape[1] == 2

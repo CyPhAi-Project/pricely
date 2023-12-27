@@ -4,6 +4,7 @@ import torch
 
 from cegus_lyapunov import cegus_lyapunov_control
 from lyapunov_learner_nnet import KnownControl, KnownLyapunovNet
+from lyapunov_verifier import SMTVerifier
 from nnet_utils import DEVICE, gen_equispace_regions
 
 
@@ -65,26 +66,31 @@ def main():
 
     x_part = (2, 2)
     part = x_part
-    x, x_lb, x_ub = gen_equispace_regions(part, X_ROI)
-    x = x.to(DEVICE)
+    x_regions = gen_equispace_regions(part, X_ROI)
 
     if True:
         lya = KNOWN_LYA
-        u = KNOWN_CTRL.apply(x)
+        u = KNOWN_CTRL.apply(x_regions[:, 0].to(device=DEVICE))
     else:
-        u = torch.zeros(len(x), U_DIM, device=DEVICE)
+        u = torch.zeros(len(x_regions), U_DIM, device=DEVICE)
         lya_net = LyapunovNet(n_input=X_DIM, n_hidden=6)
         lya = LyapunovNetRegressor(
             module=lya_net,
             optimizer=torch.optim.Adam(lya_net.parameters(), lr=10E-5)
         )
 
-    x_values_np, x_lbs_np, x_ubs_np, cex_regions = \
+    verifier = SMTVerifier(
+        x_roi=X_ROI.cpu().numpy(),
+        u_roi=U_ROI.cpu().numpy(),
+        norm_lb=0.1, norm_ub=0.8)
+
+    x_regions_np, cex_regions = \
         cegus_lyapunov_control(
-            lya, X_ROI, U_ROI, (x, x_lb, x_ub), u,
+            lya, verifier, x_regions, u,
             f_bbox, LIP_BB,
-            norm_lb=0.1, norm_ub=0.8,
             max_epochs=10, max_iter_learn=1)
+
+    x_values_np, x_lbs_np, x_ubs_np = x_regions_np[:, 0], x_regions_np[:, 1], x_regions_np[:, 2]
 
     num_samples = len(x_values_np)
     assert X_ROI.shape[1] == 2

@@ -131,7 +131,7 @@ class NeuralNetRegressor:
 def gen_equispace_regions(
     part: Sequence[int],
     x_roi: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> torch.Tensor:
     assert x_roi.shape[0] == 2
     x_dim = x_roi.shape[1]
     assert len(part) == x_dim
@@ -147,4 +147,4 @@ def gen_equispace_regions(
     lb_pts = bound_pts[[slice(0, -1)]*len(part)].reshape((-1, len(part)))
     ub_pts = bound_pts[[slice(1, None)]*len(part)].reshape((-1, len(part)))
     x = (lb_pts + ub_pts) / 2
-    return x, lb_pts, ub_pts
+    return torch.stack((x, lb_pts, ub_pts), dim=1)

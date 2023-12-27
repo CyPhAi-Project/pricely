@@ -1,10 +1,10 @@
-import dreal
+from dreal import Expression, Variable, tanh as dreal_tanh  # type: ignore
 import numpy as np
 import torch
 import torch.nn.functional as F
-from typing import Sequence
+from typing import Optional, Sequence, Tuple
 
-from lyapunov_verifier import PLyapunovLearner
+from cegus_lyapunov import PLyapunovLearner
 from nnet_utils import DEVICE, LyapunovNet, NeuralNetRegressor
 
 
@@ -49,7 +49,7 @@ class LyapunovNetRegressor(NeuralNetRegressor, PLyapunovLearner):
 
         return lya_risk.item()
 
-    def lya_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
+    def lya_expr(self, x_vars: Sequence[Variable]) -> Expression:
         # Get weights and biases
         w1 = self.model.layer1.weight.data.cpu().numpy().squeeze()
         w2 = self.model.layer2.weight.data.cpu().numpy().squeeze()
@@ -57,15 +57,15 @@ class LyapunovNetRegressor(NeuralNetRegressor, PLyapunovLearner):
         b2 = self.model.layer2.bias.data.cpu().numpy().squeeze()
 
         z1 = b1 + x_vars @ w1.T
-        a1 = [dreal.tanh(z1[j]) for j in range(len(z1))]
+        a1 = [dreal_tanh(z1[j]) for j in range(len(z1))]
         z2 = b2 + a1 @ w2.T
-        lya_expr = dreal.tanh(z2)
+        lya_expr = dreal_tanh(z2)
         return lya_expr
     
     def lya_values(self, x_values: torch.Tensor) -> torch.Tensor:
         return self._model(x_values)
 
-    def ctrl_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+    def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expression]:
         raise NotImplementedError()
 
     def ctrl_values(self, x_values: torch.Tensor) -> torch.Tensor:
@@ -85,13 +85,13 @@ class KnownControl:
         hidden = torch.atleast_2d(torch.tanh(linear))
         return hidden @ self.C.T
 
-    def dreal_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+    def dreal_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expression]:
         C = self.C.cpu().numpy().squeeze()
         K = self.K.cpu().numpy().squeeze()
         b = self.b.cpu().numpy().squeeze()
 
         linear = np.atleast_1d(x_vars @ K + b)
-        hidden = [dreal.tanh(v) for v in linear]
+        hidden = [dreal_tanh(v) for v in linear]
         ctrl_expr_arr = C.dot(hidden)
         return ctrl_expr_arr.tolist()
 
@@ -99,7 +99,7 @@ class KnownControl:
 class KnownLyapunovNet(PLyapunovLearner):
     """ Parameterized Lyapunov function from the NeuRIPS 2022 paper """
 
-    def __init__(self, W1, b1, W2, b2, ctrl: KnownControl = None):
+    def __init__(self, W1, b1, W2, b2, ctrl: Optional[KnownControl] = None):
         self.W1 = W1
         self.b1 = b1
         self.W2 = W2
@@ -130,22 +130,22 @@ class KnownLyapunovNet(PLyapunovLearner):
         lya = torch.tanh(linear2)
         return lya
 
-    def lya_expr(self, x_vars: Sequence[dreal.Variable]) -> dreal.Expression:
+    def lya_expr(self, x_vars: Sequence[Variable]) -> Expression:
         W1 = self.W1.cpu().numpy().squeeze()
         b1 = self.b1.cpu().numpy().squeeze()
         W2 = self.W2.cpu().numpy().squeeze()
         b2 = self.b2.cpu().numpy().squeeze()
 
         linear1 = x_vars @ W1.T + b1
-        hidden1 = [dreal.tanh(expr) for expr in linear1]
+        hidden1 = [dreal_tanh(expr) for expr in linear1]
         linear2 = hidden1 @ W2.T + b2
-        lya_expr = dreal.tanh(linear2)
+        lya_expr = dreal_tanh(linear2)
         return lya_expr
     
     def lya_values(self, x_values: torch.Tensor) -> torch.Tensor:
         return self.predict(x_values)
 
-    def ctrl_exprs(self, x_vars: Sequence[dreal.Variable]) -> Sequence[dreal.Expression]:
+    def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expression]:
         return [] if self.ctrl is None else self.ctrl.dreal_exprs(x_vars)
     
     def ctrl_values(self, x_values: torch.Tensor) -> torch.Tensor:

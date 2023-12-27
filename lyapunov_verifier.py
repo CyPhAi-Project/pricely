@@ -1,7 +1,8 @@
-import abc
-from dreal import CheckSatisfiability, Config, Expression as Expr, Variable, logical_and
+from dreal import CheckSatisfiability, Config, Expression as Expr, Variable, logical_and  # type: ignore
 import numpy as np
-from typing import NamedTuple, Optional, Protocol, Sequence, Tuple, Union
+from typing import NamedTuple, Optional, Tuple, Union
+
+from cegus_lyapunov import PLyapunovLearner, PLyapunovVerifier
 
 
 def pretty_sub(i: int) -> str:
@@ -23,34 +24,16 @@ class DRealInputs(NamedTuple):
     u_s: Variable
 
 
-class PLyapunovLearner(Protocol):
-    @abc.abstractmethod
-    def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
-        raise NotImplementedError
-    
-    @abc.abstractmethod
-    def lya_values(self, x_values):
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
-        raise NotImplementedError
-    
-    @abc.abstractmethod
-    def ctrl_values(self, x_values):
-        raise NotImplementedError
-
-
-class LyapunovVerifier:
+class SMTVerifier(PLyapunovVerifier):
     def __init__(
             self,
             x_roi: np.ndarray,
-            u_roi: np.ndarray,
+            u_roi: Optional[np.ndarray] = None,
             norm_lb: float = 0.0,
             norm_ub: float = np.inf,
             config: Config = None) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
-        assert u_roi.shape[0] == 2
+        assert u_roi is None or u_roi.shape[0] == 2
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
@@ -74,7 +57,7 @@ class LyapunovVerifier:
             ) for i in range(u_dim)
         ]
 
-        self._smt_tpls = self._init_lyapunov_template(x_roi, u_roi, norm_lb, norm_ub)
+        self._smt_tpls = self._init_lyapunov_template(x_roi, norm_lb, norm_ub)
 
         self._lya_cand_expr = None
         self._der_lya_cand_exprs = [None]*x_dim
@@ -147,7 +130,6 @@ class LyapunovVerifier:
     def _init_lyapunov_template(
             self,
             x_roi: np.ndarray,
-            u_roi: np.ndarray,
             norm_lb: float = 0.0,
             norm_ub: float = np.inf
         ):
@@ -155,7 +137,6 @@ class LyapunovVerifier:
 
         x_vars = [var.x for var in self._all_vars]
         der_lya_vars = [var.der_lya for var in self._all_vars]
-        u_vars = [var.u for var in self._all_inputs]
 
         radius_sq = sum(x*x for x in x_vars)
         in_roi_pred = logical_and(
@@ -183,63 +164,3 @@ class LyapunovVerifier:
         return [
             logical_and(in_roi_pred, in_nbr_pred, cond)
             for cond in [self._lya_var <= 0, lie_der_lya >= 0, trig_cond]]
-
-
-def split_regions(
-    x_values: np.ndarray,
-    x_lbs: np.ndarray,
-    x_ubs: np.ndarray,
-    sat_regions: Sequence[Tuple[int, np.ndarray]]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    new_cexs, new_lbs, new_ubs = [], [], []
-    for j, box_j in sat_regions:
-        res = split_region((x_values[j], x_lbs[j], x_ubs[j]), box_j)
-        if res is None:
-            continue  # Skip because sampled state is inside cex box.
-        cex, cut_axis, cut_value = res
-        # Shrink the bound for the existing sample
-        # Copy the old bounds
-        cex_lb, cex_ub = x_lbs[j].copy(), x_ubs[j].copy()
-        if cex[cut_axis] < x_values[j][cut_axis]:
-            # Increase lower bound for old sample
-            x_lbs[j][cut_axis] = cut_value
-            cex_ub[cut_axis] = cut_value  # Decrease upper bound for new sample
-        else:
-            assert cex[cut_axis] > x_values[j][cut_axis]
-            # Decrease upper bound for old sample
-            x_ubs[j][cut_axis] = cut_value
-            cex_lb[cut_axis] = cut_value  # Increase lower bound for new sample
-        new_cexs.append(cex)
-        new_lbs.append(cex_lb)
-        new_ubs.append(cex_ub)
-    x_values = np.row_stack((x_values, *new_cexs))
-    x_lbs = np.row_stack((x_lbs, *new_lbs))
-    x_ubs = np.row_stack((x_ubs, *new_ubs))
-    return x_values, x_lbs, x_ubs
-
-
-def split_region(
-    region: Tuple[np.ndarray, np.ndarray, np.ndarray],
-    box: np.ndarray
-) -> Optional[Tuple[np.ndarray, int, float]]:
-    cex_lb, cex_ub = box
-    x, lb, ub = region
-    if np.all(np.logical_and(cex_lb <= x, x <= cex_ub)):
-        return
-    # Clip the cex bounds to be inside the region.
-    cex_lb = cex_lb.clip(min=lb, max=ub)
-    cex_ub = cex_ub.clip(min=lb, max=ub)
-    cex = (cex_lb + cex_ub) / 2.0
-
-    # Decide the separator between the existing sample and the cex box
-    # Choose the dimension with the max distance to cut
-    axes_aligned_dist = (cex_lb - x).clip(min=0.0) + (x - cex_ub).clip(min=0.0)
-    cut_axis = np.argmax(axes_aligned_dist)
-
-    if x[cut_axis] < cex_lb[cut_axis]:
-        box_edge = cex_lb[cut_axis]
-    else:
-        assert x[cut_axis] > cex_lb[cut_axis]
-        box_edge = cex_ub[cut_axis]
-    cut_value = (x[cut_axis] + box_edge) / 2.0
-    return cex, cut_axis, cut_value
