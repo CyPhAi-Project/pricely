@@ -27,9 +27,17 @@ class PLyapunovLearner(Protocol):
     @abc.abstractmethod
     def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
         raise NotImplementedError
+    
+    @abc.abstractmethod
+    def lya_values(self, x_values):
+        raise NotImplementedError
 
     @abc.abstractmethod
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
+        raise NotImplementedError
+    
+    @abc.abstractmethod
+    def ctrl_values(self, x_values):
         raise NotImplementedError
 
 

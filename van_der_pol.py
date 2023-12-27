@@ -10,7 +10,8 @@ import time
 import torch
 
 from cegus_lyapunov import cegus_lyapunov
-from nnet_utils import DEVICE, DynamicsNet, KnownLyapunovNet, LyapunovNet, LyapunovNetRegressor, NeuralNetRegressor, gen_equispace_regions
+from lyapunov_learner_nnet import KnownLyapunovNet, LyapunovNetRegressor
+from nnet_utils import DEVICE, DynamicsNet, LyapunovNet, NeuralNetRegressor, gen_equispace_regions
 
 
 KNOWN_LYA = KnownLyapunovNet(

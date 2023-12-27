@@ -2,8 +2,9 @@ import torch
 from tqdm import tqdm
 from typing import Callable, Tuple
 
-from lyapunov_utlis import LyapunovVerifier, split_regions
-from nnet_utils import DEVICE, LyapunovNetRegressor
+from lyapunov_verifier import LyapunovVerifier, split_regions
+from lyapunov_learner_nnet import LyapunovNetRegressor
+from nnet_utils import DEVICE
 
 
 def cegus_lyapunov(
@@ -101,7 +102,7 @@ def cegus_lyapunov_control(
         x_values = torch.tensor(
             x_values_np, dtype=torch.float32,
             requires_grad=True, device=DEVICE)
-        u_values = lya.control(x_values)
+        u_values = lya.ctrl_values(x_values)
     outer_pbar.close()
 
     if len(cex_regions) > 0:
