@@ -168,7 +168,7 @@ def main():
     plt.gca().set_xlim(*X_ROI[:, 0])
     plt.gca().set_ylim(*X_ROI[:, 1])
     plt.gca().set_aspect("equal")
-    plt.savefig("valid_regions.png")
+    plt.savefig("out/VanDerPol_valid_regions.png")
     plt.clf()
 
 
