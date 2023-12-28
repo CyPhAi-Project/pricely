@@ -119,9 +119,9 @@ class KnownLyapunovNet(PLyapunovLearner):
             + lya_0_value.pow(2)
         return lya_risk.item()
 
-    def fit_loop(self, X: torch.Tensor, y: torch.Tensor, max_epoch: int = 10, copy: bool = True) -> Sequence[float]:
+    def fit_loop(self, X: torch.Tensor, y: torch.Tensor, max_epochs: int = 10, copy: bool = True) -> Sequence[float]:
         lya_risk = self._loss(X, y)
-        return [lya_risk]*max_epoch
+        return [lya_risk]
 
     def predict(self, X: torch.Tensor) -> torch.Tensor:
         linear1 = X @ self.W1.T + self.b1

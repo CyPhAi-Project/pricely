@@ -89,7 +89,7 @@ class NeuralNetRegressor:
         self._optimizer.step()
         return loss.item()
 
-    def fit_loop(self, X: torch.Tensor, y: torch.Tensor, max_epoch: int = 10, copy: bool = True) -> Sequence[float]:
+    def fit_loop(self, X: torch.Tensor, y: torch.Tensor, max_epochs: int = 10, copy: bool = True) -> Sequence[float]:
         if copy:  # Make a copy on the device.
             X_device = X.to(DEVICE, copy=True)
             y_device = y.to(DEVICE, copy=True)
@@ -101,7 +101,7 @@ class NeuralNetRegressor:
 
         self._model.train(True)
         losses = []
-        for i in tqdm.tqdm(range(max_epoch), ascii=True):
+        for i in tqdm.tqdm(range(max_epochs), ascii=True):
             loss = self.train_one_step(X_device, y_device)
             losses.append(loss)
 

@@ -87,12 +87,14 @@ def cegus_lyapunov_control(
         iter(range(1, max_epochs + 1)),
         desc="Outer", ascii=True, postfix={"#Valid": 0, "#Total": len(x_values)})
     cex_regions = []
+    obj_values = []
     for epoch in outer_pbar:
         dxdt_values = f_bbox(x_values, u_values)
 
         assert x_values.requires_grad, f"at iteration {epoch}."
-        learner.fit_loop(x_values, dxdt_values,
-                         max_epoch=max_iter_learn, copy=False)
+        objs = learner.fit_loop(x_values, dxdt_values,
+                               max_epochs=max_iter_learn, copy=False)
+        obj_values.extend(objs)
 
         # Verify Lyapunov condition
         u_values_np = u_values.detach().cpu().numpy()
