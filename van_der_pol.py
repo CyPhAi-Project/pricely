@@ -10,6 +10,7 @@ import time
 import torch
 
 from cegus_lyapunov import cegus_lyapunov
+from lyapunov_learner_cvx import QuadraticLearner
 from lyapunov_learner_nnet import KnownLyapunovNet, LyapunovNetRegressor
 from lyapunov_verifier import SMTVerifier
 from nnet_utils import DEVICE, LyapunovNet, gen_equispace_regions
@@ -60,7 +61,7 @@ def main():
         return dxdt
     LIP_BB = 3.4599  # Manually derived for ROI
 
-    x_part = (1, 2)  # Partition into subspaces
+    x_part = (2, 2)  # Partition into subspaces
     assert len(x_part) == X_DIM
     print(
         f"Prepare {'x'.join(str(n) for n in x_part)} equispaced training samples: ",
@@ -70,6 +71,8 @@ def main():
     print(f"{time.perf_counter() - t_start:.3f}s")
 
     if True:
+        lya = QuadraticLearner(X_DIM)
+    elif True:
         lya = KNOWN_LYA
     else:
         lya_net = LyapunovNet(n_input=X_DIM, n_hidden=6)
@@ -84,7 +87,7 @@ def main():
 
     x_regions_np, cex_regions = cegus_lyapunov(
         lya, verifier, x_regions, f_bbox, LIP_BB,
-        max_epochs=20, max_iter_learn=1000)
+        max_epochs=30, max_iter_learn=1)
 
     x_values_np, x_lbs_np, x_ubs_np = x_regions_np[:, 0], x_regions_np[:, 1], x_regions_np[:, 2]
 
