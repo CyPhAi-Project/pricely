@@ -141,7 +141,7 @@ def split_regions(
     for j, box_j in sat_regions:
         res = split_region(x_regions[j], box_j)
         if res is None:
-            continue  # Skip because sampled state is inside cex box.
+            raise RuntimeError("Sampled state is inside cex box")
         cex, cut_axis, cut_value = res
         # Shrink the bound for the existing sample
         # Copy the old bounds
@@ -172,7 +172,7 @@ def split_region(
     cex_lb, cex_ub = box
     x, lb, ub = region
     if np.all(np.logical_and(cex_lb <= x, x <= cex_ub)):
-        return
+        raise RuntimeError("Sampled state is inside cex box")
     # Clip the cex bounds to be inside the region.
     cex_lb = cex_lb.clip(min=lb, max=ub)
     cex_ub = cex_ub.clip(min=lb, max=ub)

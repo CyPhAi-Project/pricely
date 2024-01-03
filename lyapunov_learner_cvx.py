@@ -26,12 +26,18 @@ class QuadraticLearner(PLyapunovLearner):
 
         # constraints from samples
         Py = y_np @ self._pd_mat
-        lhs = cp.sum(cp.multiply(x_np, Py), axis=1)
+        xPy = cp.sum(cp.multiply(x_np, Py), axis=1)
         constraints = [
-            lhs + self._tol <= 0
+            xPy + self._tol <= 0
         ]
-        # Minimize the 
-        obj = cp.Minimize(cp.sum(2*lhs + cp.norm2(Py, axis=1)**2))
+
+        # Maximize the distance that still ensures yj P x <= 0
+        ## L-2 norm:  ||x - xj||^2 <= -2*xj P yj - ||P yj||^2 ==> x P yj <= 0
+        ## The above sufficient condition is discovered through the S-procedure.
+        obj = cp.Maximize(cp.sum(-2*xPy - cp.norm2(Py, axis=1)**2))
+        ## L-inf norm: dj_max <= -xj P yj / sum(abs(P yj))
+        # See "An analytical solution to the minimum Lp-norm of a hyperplane"
+        # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported
         prob = cp.Problem(obj, constraints)
         prob.solve()
         if prob.status == "optimal":
