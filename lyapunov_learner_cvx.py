@@ -28,22 +28,31 @@ class QuadraticLearner(PLyapunovLearner):
         Py = y_np @ self._pd_mat
         xPy = cp.sum(cp.multiply(x_np, Py), axis=1)
         constraints = [
-            xPy + self._tol <= 0
+            np.eye(self._x_dim) - self._pd_mat >> 0,
+            xPy + self._tol <= 0,
         ]
 
         # Maximize the distance that still ensures yj P x <= 0
-        ## L-2 norm:  ||x - xj||^2 <= -2*xj P yj - ||P yj||^2 ==> x P yj <= 0
+        ## L-2 norm: ||x - xj||^2 <= -2*xj P yj - ||P yj||^2 ==> x P yj <= 0
         ## The above sufficient condition is discovered through the S-procedure.
+        ## Let r denote the distance from xj to the hyperplane x P yj = 0.
+        ## Because the origin is on the hyperplane and (P yj/||P yj||) is the normal vector,
+        ## we can derive r = -xj (P yj / ||P yj||) since xj P yj < 0.
+        ## Then, -2*xj P yj - ||P yj||^2 = 2r||P yj|| - ||P yj||^2 = r^2 - (r-||P yj||)^2 <= r^2
         obj = cp.Maximize(cp.sum(-2*xPy - cp.norm2(Py, axis=1)**2))
         ## L-inf norm: dj_max <= -xj P yj / sum(abs(P yj))
         # See "An analytical solution to the minimum Lp-norm of a hyperplane"
-        # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported
+        # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported by CVXPY
         prob = cp.Problem(obj, constraints)
         prob.solve()
         if prob.status == "optimal":
             return [obj.value/len(x_np)]
         elif prob.status == "infeasible":
             raise RuntimeError("Learner cannot find a quadratic Lyapunov function")
+        elif prob.status == "optimal_inaccurate":
+            prob.solve(solver="SCS", max_iters=2_000_000)
+            assert prob.status == "optimal"
+            return [obj.value/len(x_np)]
         else:
             raise RuntimeError(f"CVXPY returns status {prob.status}.")
 
