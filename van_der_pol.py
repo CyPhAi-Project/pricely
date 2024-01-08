@@ -12,7 +12,7 @@ import torch
 from cegus_lyapunov import cegus_lyapunov
 from lyapunov_learner_cvx import QuadraticLearner
 from lyapunov_learner_nnet import KnownLyapunovNet, LyapunovNetRegressor
-from lyapunov_verifier import SMTVerifier
+from lyapunov_verifier import SMTVerifier, check_exact_lyapunov
 from nnet_utils import DEVICE, LyapunovNet, gen_equispace_regions
 
 
@@ -54,6 +54,7 @@ def main():
     ])
     assert X_ROI.shape == (2, X_DIM)
     U_DIM = 0
+    NORM_LB, NORM_UB = 0.2, 1.2
 
     def f_bbox(x: torch.Tensor):
         assert x.shape[1] == X_DIM
@@ -63,7 +64,7 @@ def main():
         return dxdt
     LIP_BB = 3.4599  # Manually derived for ROI
 
-    x_part = (2, 2)  # Partition into subspaces
+    x_part = (X_DIM, X_DIM)  # Partition into subspaces
     assert len(x_part) == X_DIM
     print(
         f"Prepare {'x'.join(str(n) for n in x_part)} equispaced training samples: ",
@@ -85,12 +86,30 @@ def main():
 
     verifier = SMTVerifier(
         x_roi=X_ROI.cpu().numpy(),
-        norm_lb=0.2, norm_ub=1.2)
+        norm_lb=NORM_LB, norm_ub=NORM_UB)
 
     x_regions_np, cex_regions = cegus_lyapunov(
         lya, verifier, x_regions, f_bbox, LIP_BB,
-        max_epochs=30, max_iter_learn=1)
+        max_epochs=25, max_iter_learn=1)
 
+    # Validate with exact Lyapunov conditions
+    x_vars = [axis_i.x for axis_i in verifier._all_vars]
+    dxdt_exprs = [
+        -x_vars[1],
+        x_vars[0] + (x_vars[0]**2-1)*x_vars[1]
+    ]
+    result = check_exact_lyapunov(
+        x_vars, dxdt_exprs, X_ROI.cpu().numpy(),
+        lya.lya_expr(x_vars), NORM_LB, NORM_UB,
+        verifier._config)
+
+    if result is None:
+        print("Learned candidate is a valid Lyapunov function.")
+    else:
+        print("Learned candidate is NOT a Lyapunov function.")
+        print(f"Counterexample:\n{result}")
+
+    print("Plotting verified regions:")
     x_values_np, x_lbs_np, x_ubs_np = \
         x_regions_np[:, 0], x_regions_np[:, 1], x_regions_np[:, 2]
 
@@ -111,12 +130,12 @@ def main():
                          edgecolor='black', facecolor=facecolor, alpha=0.3)
         plt.gca().add_patch(rect)
 
-    plt.gca().add_patch(Circle((0, 0), 0.2, color='r', fill=False))
-    plt.gca().add_patch(Circle((0, 0), 1.2, color='r', fill=False))
+    plt.gca().add_patch(Circle((0, 0), NORM_LB, color='r', fill=False))
+    plt.gca().add_patch(Circle((0, 0), NORM_UB, color='r', fill=False))
     plt.gca().set_xlim(*X_ROI[:, 0])
     plt.gca().set_ylim(*X_ROI[:, 1])
     plt.gca().set_aspect("equal")
-    plt.savefig("out/VanDerPol_valid_regions.png")
+    plt.savefig("out/VanDerPol-valid_regions.png")
     plt.clf()
 
 
