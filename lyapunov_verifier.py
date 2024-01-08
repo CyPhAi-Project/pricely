@@ -1,6 +1,7 @@
-from dreal import CheckSatisfiability, Config, Expression as Expr, Variable, logical_and  # type: ignore
+import dreal
+from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
-from typing import NamedTuple, Optional, Tuple, Union
+from typing import NamedTuple, Optional, Sequence, Tuple, Union
 
 from cegus_lyapunov import PLyapunovLearner, PLyapunovVerifier
 
@@ -37,7 +38,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
-        self._lip_sq_var = Variable("L²")
+        self._lip_var = Variable("Lip")
         self._all_vars = [
             DRealVars(
                 x=Variable(f"x{pretty_sub(i)}"),
@@ -106,7 +107,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
-            [(self._lip_sq_var, lip_expr**2)] + \
+            [(self._lip_var, lip_expr)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
             [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
             [(xi.ub, Expr(vi)) for xi, vi in zip(self._all_vars, x_ub_j)] + \
@@ -131,7 +132,9 @@ class SMTVerifier(PLyapunovVerifier):
             self,
             x_roi: np.ndarray,
             norm_lb: float = 0.0,
-            norm_ub: float = np.inf
+            norm_ub: float = np.inf,
+            use_l1: bool = False,
+            use_l2: bool = True
         ):
         assert x_roi.shape[1] >= 1
 
@@ -152,15 +155,57 @@ class SMTVerifier(PLyapunovVerifier):
         lie_der_lya = sum(var.der_lya*var.dxdt_s
                           for var in self._all_vars)
 
-        der_lya_l2_sq = sum(e*e for e in der_lya_vars)
-        dist_sq = \
-            sum((var.x-var.x_s)**2 for var in self._all_vars) + \
-            sum((var.u-var.u_s)**2 for var in self._all_inputs)
-        trig_cond = der_lya_l2_sq*dist_sq*self._lip_sq_var >= lie_der_lya**2
+        neg_trig_cond_list = []
+        if use_l1:  #  Hölder's inequality for L1, Linf norms
+            der_lya_l1 = sum(abs(e) for e in der_lya_vars)
+            dist_linf = \
+                dreal.Max(dreal.Max(*(abs(var.x-var.x_s) for var in self._all_vars)),
+                          0.0) # dreal.Max(*(abs(var.u-var.u_s) for var in self._all_inputs)))
+            neg_trig_cond_l1 = (der_lya_l1*dist_linf*self._lip_var + lie_der_lya >= 0.0)
+            neg_trig_cond_list.append(neg_trig_cond_l1)
+
+        if use_l2:  # Cauchy-Schwarz inequality
+            der_lya_l2_sq = sum(e*e for e in der_lya_vars)
+            dist_sq = \
+                sum((var.x-var.x_s)**2 for var in self._all_vars) + \
+                sum((var.u-var.u_s)**2 for var in self._all_inputs)
+            # (|∂V/∂x||(x-x̃,u-ũ)|Lip)²>= |∂V/∂x⋅f(x̃,ũ)|²
+            neg_trig_cond_l2 = der_lya_l2_sq*dist_sq*(self._lip_var**2) >= lie_der_lya**2
+            neg_trig_cond_list.append(neg_trig_cond_l2)
+
+        neg_trig_cond = logical_and(*neg_trig_cond_list)
         # Validity Cond: forall x in [lb, ub].
-        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip)² < |∂V/∂x⋅f(x̃,ũ)|²
+        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip < -∂V/∂x⋅f(x̃,ũ)
         # SMT Cond: exists x in [lb, ub].
-        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ (|∂V/∂x||(x-x̃,u-ũ)|Lip)²>= |∂V/∂x⋅f(x̃,ũ)|²
+        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ |∂V/∂x||(x-x̃,u-ũ)|Lip >= -∂V/∂x⋅f(x̃,ũ)
         return [
             logical_and(in_roi_pred, in_nbr_pred, cond)
-            for cond in [self._lya_var <= 0, lie_der_lya >= 0, trig_cond]]
+            for cond in [self._lya_var <= 0, lie_der_lya >= 0, neg_trig_cond]]
+
+
+def check_exact_lyapunov(
+        x_vars: Sequence[Variable],
+        dxdt_exprs: Sequence[Expr],
+        x_roi: np.ndarray,
+        lya_expr: Expr,
+        norm_lb: float=0.0,
+        norm_ub: float=np.inf,
+        config: dreal.Config = dreal.Config()
+    ) -> Optional[Box]:
+    radius_sq = sum(x*x for x in x_vars)
+    in_roi_pred = logical_and(
+        dreal.sqrt(radius_sq) >= norm_lb,
+        dreal.sqrt(radius_sq) <= norm_ub,
+        *(logical_and(x >= lb, x <= ub)
+        for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1]))
+    )
+
+    der_lya = [lya_expr.Differentiate(x) for x in x_vars]
+    lie_der_lya = sum(
+        der_lya_i*dxdt_i
+        for der_lya_i, dxdt_i in zip(der_lya, dxdt_exprs))
+
+    neg_lya_cond = logical_or(lya_expr <= 0.0, lie_der_lya >= 0.0)
+    smt_query = logical_and(in_roi_pred, neg_lya_cond)
+    result = CheckSatisfiability(smt_query, config)
+    return result
