@@ -2,5 +2,4 @@ cvxpy
 dreal
 matplotlib
 numpy
-torch
 tqdm
