@@ -5,37 +5,50 @@ Learning Dyanmics and Lyapunov function for the Van der Pol oscillator
 """
 
 from dreal import Variable  # type: ignore
-from matplotlib.patches import Circle, Rectangle
+from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 import numpy as np
 import time
 
+from plot_utils_2d import add_level_sets, add_valid_regions
 from pricely.cegus_lyapunov import cegus_lyapunov
-from pricely.learner_cvxpy import QuadraticLearner
+from pricely.learner_cvxpy import QuadraticLearner, SOS1Learner
 from pricely.utils import check_exact_lyapunov, gen_equispace_regions
 from pricely.verifier_dreal import SMTVerifier
 
 
-def main():
+X_DIM = 2
+X_ROI = np.array([
+    [-1.25, -1.25],  # Lower bounds
+    [1.25, 1.25]  # Upper bounds
+])
+assert X_ROI.shape == (2, X_DIM)
+LIP_BB = 3.4599  # Manually derived for ROI
+NORM_LB, NORM_UB = 0.2, 1.2
+
+
+def f_bbox(x: np.ndarray):
     # Actual dynamical system
-    X_DIM = 2
-    X_ROI = np.array([
-        [-1.25, -1.25],  # Lower bounds
-        [1.25, 1.25]  # Upper bounds
-    ])
-    assert X_ROI.shape == (2, X_DIM)
-    U_DIM = 0
-    NORM_LB, NORM_UB = 0.2, 1.2
+    assert x.shape[1] == X_DIM
+    dxdt = np.zeros_like(x)
+    dxdt[:, 0] = -x[:, 1]
+    dxdt[:, 1] = x[:, 0] + (x[:, 0]**2-1)*x[:, 1]
+    return dxdt
 
-    def f_bbox(x: np.ndarray):
-        assert x.shape[1] == X_DIM
-        dxdt = np.zeros_like(x)
-        dxdt[:, 0] = -x[:, 1]
-        dxdt[:, 1] = x[:, 0] + (x[:, 0]**2-1)*x[:, 1]
-        return dxdt
-    LIP_BB = 3.4599  # Manually derived for ROI
 
-    x_part = [3]*X_DIM  # Partition into subspaces
+def validate(lya):
+    x_vars = [Variable(f"x{i}") for i in range(X_DIM)]
+    dxdt_exprs = [
+        -x_vars[1],
+        x_vars[0] + (x_vars[0]**2-1)*x_vars[1]
+    ]
+    return check_exact_lyapunov(
+        x_vars, dxdt_exprs, X_ROI,
+        lya.lya_expr(x_vars), NORM_LB, NORM_UB)
+
+
+def main():
+    x_part = [5]*X_DIM  # Partition into subspaces
     assert len(x_part) == X_DIM
     print(
         f"Prepare {'x'.join(str(n) for n in x_part)} equispaced training samples.")
@@ -53,15 +66,7 @@ def main():
     print(f"Total Time: {time_usage:.3f}s")
 
     # Validate with exact Lyapunov conditions
-    x_vars = [Variable(f"x{i}") for i in range(X_DIM)]
-    dxdt_exprs = [
-        -x_vars[1],
-        x_vars[0] + (x_vars[0]**2-1)*x_vars[1]
-    ]
-    result = check_exact_lyapunov(
-        x_vars, dxdt_exprs, X_ROI,
-        lya.lya_expr(x_vars), NORM_LB, NORM_UB)
-
+    result = validate(lya)
     if result is None:
         print("Learned candidate is a valid Lyapunov function.")
     else:
@@ -69,35 +74,17 @@ def main():
         print(f"Counterexample:\n{result}")
 
     print("Plotting verified regions:")
-    plt.title(f"# iteration: {last_epoch}. "
-              f"# total samples: {len(last_x_regions)}. "
-              f"Time: {time_usage:.3f}s")
-    x_values, x_lbs, x_ubs = \
-        last_x_regions[:, 0], last_x_regions[:, 1], last_x_regions[:, 2]
+    add_valid_regions(
+        plt.gca(), last_epoch, time_usage, last_x_regions, cex_regions)
+    plt.gca().add_patch(Circle((0, 0), NORM_LB, color='gray', fill=False))
+    plt.gca().add_patch(Circle((0, 0), NORM_UB, color='gray', fill=False))
 
-    num_samples = len(x_values)
-    assert X_ROI.shape[1] == 2
-    sat_region_iter = (k for k, _ in cex_regions)
-    k = next(sat_region_iter, None)
-    for j in range(num_samples):
-        if j == k:
-            k = next(sat_region_iter, None)
-            facecolor = "white"
-        elif j >= num_samples - len(cex_regions):
-            facecolor = "gray"
-        else:
-            facecolor = "green"
-        w, h = x_ubs[j] - x_lbs[j]
-        rect = Rectangle(x_lbs[j], w, h, fill=True,
-                         edgecolor='black', facecolor=facecolor, alpha=0.3)
-        plt.gca().add_patch(rect)
+    add_level_sets(plt.gca(), lya.lya_values, X_ROI, NORM_UB)
 
-    plt.gca().add_patch(Circle((0, 0), NORM_LB, color='r', fill=False))
-    plt.gca().add_patch(Circle((0, 0), NORM_UB, color='r', fill=False))
     plt.gca().set_xlim(*X_ROI[:, 0])
     plt.gca().set_ylim(*X_ROI[:, 1])
     plt.gca().set_aspect("equal")
-    plt.savefig(f"out/VanDerPol-valid_regions-{'x'.join(str(n) for n in x_part)}.png")
+    plt.savefig(f"out/VanDerPol-valid_regions-{'x'.join(str(n) for n in x_part)}-{lya.__class__.__name__}.png")
     plt.clf()
 
 
