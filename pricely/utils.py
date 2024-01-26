@@ -1,29 +1,43 @@
 from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Formula, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
+from numpy.typing import ArrayLike
 from typing import Optional, Sequence
 
 
 def check_exact_lyapunov(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
-    x_roi: np.ndarray,
     lya_expr: Expr,
-    norm_lb: float = 0.0,
-    norm_ub: float = np.inf,
+    level_ub: float = np.inf,
+    abs_x_lb: ArrayLike = 2**-6,
+    abs_x_ub: ArrayLike = 2**6,
     config: Config = Config()
 ) -> Optional[Box]:
-    radius_sq = sum(x*x for x in x_vars)
-    norm_lb_cond = radius_sq >= norm_lb**2 if np.isfinite(
-        norm_lb) and norm_lb > 0 else Formula.TRUE()
-    norm_ub_cond = radius_sq <= norm_ub**2 if np.isfinite(
-        norm_ub) else Formula.TRUE()
+    assert np.all(0.0 < np.asfarray(abs_x_lb))
+    assert np.all(np.asfarray(abs_x_lb) < np.asfarray(abs_x_ub)) and np.all(np.isfinite(abs_x_ub))
 
-    in_roi_pred = logical_and(
-        norm_lb_cond,
-        norm_ub_cond,
-        *(logical_and(x >= lb, x <= ub)
-          for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1]))
-    )
+    sublevel_set_cond = (lya_expr <= level_ub) if np.isfinite(
+        level_ub) else Formula.TRUE()
+
+    # Add the range on the absolute values of x to limit the search space.
+    abs_range_conds = []
+    if np.isscalar(abs_x_lb):
+        abs_range_conds.extend(abs(x) >= abs_x_lb for x in x_vars)
+    else:
+        abs_x_lb = np.asfarray(abs_x_lb)
+        assert len(abs_x_lb) == len(x_vars)
+        abs_range_conds.extend(abs(x) >= lb for x, lb in zip(x_vars, abs_x_lb))
+
+    if np.isscalar(abs_x_ub):
+        abs_range_conds.extend(abs(x) <= abs_x_ub for x in x_vars)
+    else:
+        abs_x_ub = np.asfarray(abs_x_ub)
+        assert len(abs_x_ub) == len(x_vars)
+        abs_range_conds.extend(abs(x) <= ub for x, ub in zip(x_vars, abs_x_ub))
+
+    in_omega_pred = logical_and(
+        *abs_range_conds,
+        sublevel_set_cond)
 
     der_lya = [lya_expr.Differentiate(x) for x in x_vars]
     lie_der_lya = sum(
@@ -31,7 +45,7 @@ def check_exact_lyapunov(
         for der_lya_i, dxdt_i in zip(der_lya, dxdt_exprs))
 
     neg_lya_cond = logical_or(lya_expr <= 0.0, lie_der_lya >= 0.0)
-    smt_query = logical_and(in_roi_pred, neg_lya_cond)
+    smt_query = logical_and(in_omega_pred, neg_lya_cond)
     result = CheckSatisfiability(smt_query, config)
     return result
 

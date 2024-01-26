@@ -1,5 +1,6 @@
-from dreal import CheckSatisfiability, Config, Expression as Expr, Formula, Max, Variable, logical_and  # type: ignore
+from dreal import CheckSatisfiability, Config, Expression as Expr, Max, Variable, logical_and  # type: ignore
 import numpy as np
+from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Tuple, Union
 
 from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner, PLyapunovVerifier
@@ -29,14 +30,17 @@ class SMTVerifier(PLyapunovVerifier):
             self,
             x_roi: NDArrayFloat,
             u_roi: Optional[NDArrayFloat] = None,
-            norm_lb: float = 0.0,
-            norm_ub: float = np.inf,
+            abs_x_lb: ArrayLike = 2**-6,
             config: Config = None) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
         assert u_roi is None or u_roi.shape[0] == 2
+        assert np.all(np.asfarray(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
+
+        self._x_roi = x_roi
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
+        self._lya_level_var = Variable("c")
         self._lip_var = Variable("Lip")
         self._all_vars = [
             DRealVars(
@@ -57,9 +61,10 @@ class SMTVerifier(PLyapunovVerifier):
             ) for i in range(u_dim)
         ]
 
-        self._smt_tpls = self._init_lyapunov_template(x_roi, norm_lb, norm_ub)
+        self._smt_tpls = self._init_lyapunov_template(abs_x_lb)
 
         self._lya_cand_expr = None
+        self._lya_cand_level_value = None
         self._der_lya_cand_exprs = [None]*x_dim
         self._ctrl_exprs = [None]*u_dim
 
@@ -74,6 +79,7 @@ class SMTVerifier(PLyapunovVerifier):
     def set_lyapunov_candidate(self, lya: PLyapunovLearner):
         x_vars = [xi.x for xi in self._all_vars]
         self._lya_cand_expr = lya.lya_expr(x_vars)
+        self._lya_cand_level_value = lya.find_level_ub(self._x_roi)
         self._der_lya_cand_exprs = [
             self._lya_cand_expr.Differentiate(x) for x in x_vars]
         if len(self._all_inputs) > 0:
@@ -81,6 +87,7 @@ class SMTVerifier(PLyapunovVerifier):
 
     def reset_lyapunov_candidate(self):
         self._lya_cand_expr = None
+        self._lya_cand_level_value = None
         self._der_lya_cand_exprs = [None]*len(self._all_vars)
         self._ctrl_exprs = [None]*len(self._all_inputs)
 
@@ -106,6 +113,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
+            [(self._lya_level_var, self._lya_cand_level_value)] + \
             [(self._lip_var, lip_expr)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
             [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
@@ -128,27 +136,23 @@ class SMTVerifier(PLyapunovVerifier):
 
     def _init_lyapunov_template(
             self,
-            x_roi: NDArrayFloat,
-            norm_lb: float = 0.0,
-            norm_ub: float = np.inf,
+            abs_x_lb: ArrayLike,
             use_l1: bool = False,
             use_l2: bool = True
         ):
-        assert x_roi.shape[1] >= 1
-
         x_vars = [var.x for var in self._all_vars]
         der_lya_vars = [var.der_lya for var in self._all_vars]
 
-        radius_sq = sum(x*x for x in x_vars)
+        if np.isscalar(abs_x_lb):
+            abs_x_lb_conds = [abs(x) >= abs_x_lb for x in x_vars]
+        else:
+            abs_x_lb = np.asfarray(abs_x_lb)
+            assert len(abs_x_lb) == len(x_vars)
+            abs_x_lb_conds = [abs(x) >= lb for x, lb in zip(x_vars, abs_x_lb)]
 
-        norm_lb_cond = radius_sq >= norm_lb**2 if np.isfinite(norm_lb) and norm_lb > 0 else Formula.TRUE()
-        norm_ub_cond = radius_sq <= norm_ub**2 if np.isfinite(norm_ub) else Formula.TRUE()
+        sublevel_set_cond = (self._lya_var <= self._lya_level_var)
 
-        in_roi_pred = logical_and(
-            norm_lb_cond,
-            norm_ub_cond,
-            *(logical_and(x >= lb, x <= ub)
-              for x, lb, ub in zip(x_vars, x_roi[0], x_roi[1])))
+        in_omega_pred = logical_and(*abs_x_lb_conds, sublevel_set_cond)
 
         in_nbr_pred = logical_and(
             *(logical_and(var.x >= var.lb, var.x <= var.ub)
@@ -181,5 +185,17 @@ class SMTVerifier(PLyapunovVerifier):
         # SMT Cond: exists x in [lb, ub].
         #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ |∂V/∂x||(x-x̃,u-ũ)|Lip >= -∂V/∂x⋅f(x̃,ũ)
         return [
-            logical_and(in_roi_pred, in_nbr_pred, cond)
+            logical_and(in_omega_pred, in_nbr_pred, cond)
             for cond in [self._lya_var <= 0, lie_der_lya >= 0, neg_trig_cond]]
+
+def test_smt_verifier():
+    X_ROI = np.asfarray([
+        [-1, -2, -3],
+        [+1, +2, +3]
+    ])
+    verifier = SMTVerifier(X_ROI, abs_x_lb=2**-4)
+    print(*verifier._smt_tpls, sep="\n")
+
+
+if __name__ == "__main__":
+    test_smt_verifier()

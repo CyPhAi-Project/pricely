@@ -1,9 +1,11 @@
 import abc
 from dreal import Expression as Expr, Variable  # type: ignore
+import itertools
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from tqdm import tqdm
 from typing import Callable, Optional, Protocol, Sequence, Tuple, Union
+import warnings
 
 
 NDArrayFloat = NDArray[np.float_]
@@ -27,6 +29,29 @@ class PLyapunovLearner(Protocol):
 
     @abc.abstractmethod
     def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
+        raise NotImplementedError
+
+    def find_level_ub(self, x_roi: NDArrayFloat) -> float:
+        """ Find a sublevel set covering the region of interest
+        Heuristically find the max value in the region of interest.
+        List all vertices of ROI and pick the max level value.
+        Provide it as the upper bound of the level value.
+        """
+        assert len(x_roi) == 2
+        x_dim = x_roi.shape[1]
+        x_lb, x_ub= x_roi
+
+        # XXX This generates 2^x_dim vertices.
+        if x_dim > 16:
+            warnings.warn(f"Generating 2^{x_dim} = {2**x_dim} vertices of the unit cube."
+                            "This may take a while.")
+        unit_cube = np.fromiter(itertools.product((0.0, 1.0), repeat=x_dim),
+                                dtype=np.dtype((np.float_, x_dim)))
+        vertices = x_lb + unit_cube * (x_ub - x_lb)
+        return float(np.max(self.lya_values(vertices)))
+    
+    @abc.abstractmethod
+    def find_sublevel_set_and_box(self, x_roi: NDArrayFloat) -> Tuple[float, ArrayLike]:
         raise NotImplementedError
 
 
@@ -108,8 +133,8 @@ def cegus_lyapunov_control(
 
         outer_pbar.set_postfix({"#Valid": len(x_regions)-len(cex_regions), "#Total": len(x_regions)})
         if len(cex_regions) == 0:
+            # Lyapunov function candidate passed
             return epoch, x_regions, cex_regions
-            break  # Lyapunov function candidate passed
         # else:
         # NOTE splitting regions may also modified the input arrays
         x_regions = split_regions(x_regions, cex_regions)

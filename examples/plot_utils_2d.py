@@ -6,22 +6,26 @@ from typing import Callable
 
 def add_level_sets(
         ax: Axes, lya_func: Callable[[np.ndarray], np.ndarray],
-        x_roi: np.ndarray, norm_ub: float=np.inf,
+        level_ub: float=np.inf,
         num_steps: int = 250,
         colors: str = "r"
         ):
-    assert x_roi.shape == (2, 2)
-    x_arr = np.linspace(x_roi[0], x_roi[1], num_steps).T
-    X, Y = np.meshgrid(*x_arr)
+    x_lim, y_lim = ax.get_xlim(), ax.get_ylim()
+    x_arr = np.linspace(*x_lim, num_steps)
+    y_arr = np.linspace(*y_lim, num_steps)
+    X, Y = np.meshgrid(x_arr, y_arr)
     x_values = np.column_stack((X.ravel(), Y.ravel()))
     Z = lya_func(x_values).reshape(X.shape)
-    if not np.isfinite(norm_ub):
-        ax.contour(X, Y, Z, colors=colors)
+    if np.isfinite(level_ub):
+        levels=[level_ub]
     else:
-        ang_arr = np.linspace(0.0, 2*np.pi, num_steps)
-        sel_values = norm_ub*np.column_stack((np.cos(ang_arr), np.sin(ang_arr)))
+        sel_values = np.row_stack([
+            np.column_stack((x_arr, np.full_like(x_arr, y_lim[0]))),
+            np.column_stack((np.full_like(y_arr, x_lim[0]), y_arr))])
         lya_values = lya_func(sel_values)
-        ax.contour(X, Y, Z, levels=[np.min(lya_values), np.max(lya_values)], colors=colors)
+        levels=np.linspace(0.0, np.min(lya_values), 5)
+
+    ax.contour(X, Y, Z, levels, colors=colors)
 
 
 def add_valid_regions(ax: Axes, num_iters: int, time_usage: float, regions: np.ndarray, cex_regions):

@@ -2,9 +2,10 @@ import cvxpy as cp
 from dreal import Expression as Expr, Variable  # type: ignore
 import math
 import numpy as np
-from typing import Sequence
+from numpy.typing import ArrayLike
+from typing import Sequence, Tuple
 
-from pricely.cegus_lyapunov import PLyapunovLearner
+from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner
 
 
 class QuadraticLearner(PLyapunovLearner):
@@ -67,6 +68,11 @@ class QuadraticLearner(PLyapunovLearner):
             return np.array([]).reshape(len(x_values), 0)
         else:
             return super().ctrl_values(x_values)
+
+    def find_sublevel_set_and_box(self, x_roi: NDArrayFloat) -> Tuple[float, NDArrayFloat]:
+        level_ub = self.find_level_ub(x_roi)
+        abs_x_ub = np.sqrt(2*level_ub * np.linalg.inv(self._pd_mat.value).diagonal())
+        return level_ub, abs_x_ub
 
 
 class SOS1Learner(PLyapunovLearner):
