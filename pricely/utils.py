@@ -1,4 +1,4 @@
-from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Formula, Variable, logical_and, logical_or  # type: ignore
+from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import Optional, Sequence
@@ -16,24 +16,23 @@ def check_exact_lyapunov(
     assert np.all(0.0 < np.asfarray(abs_x_lb))
     assert np.all(np.asfarray(abs_x_lb) < np.asfarray(abs_x_ub)) and np.all(np.isfinite(abs_x_ub))
 
-    sublevel_set_cond = (lya_expr <= level_ub) if np.isfinite(
-        level_ub) else Formula.TRUE()
+    sublevel_set_cond = lya_expr <= Expr(level_ub)
 
     # Add the range on the absolute values of x to limit the search space.
     abs_range_conds = []
     if np.isscalar(abs_x_lb):
-        abs_range_conds.extend(abs(x) >= abs_x_lb for x in x_vars)
+        abs_range_conds.extend(abs(x) >= Expr(abs_x_lb) for x in x_vars)
     else:
         abs_x_lb = np.asfarray(abs_x_lb)
         assert len(abs_x_lb) == len(x_vars)
-        abs_range_conds.extend(abs(x) >= lb for x, lb in zip(x_vars, abs_x_lb))
+        abs_range_conds.extend(abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
 
     if np.isscalar(abs_x_ub):
-        abs_range_conds.extend(abs(x) <= abs_x_ub for x in x_vars)
+        abs_range_conds.extend(abs(x) <= Expr(abs_x_ub) for x in x_vars)
     else:
         abs_x_ub = np.asfarray(abs_x_ub)
         assert len(abs_x_ub) == len(x_vars)
-        abs_range_conds.extend(abs(x) <= ub for x, ub in zip(x_vars, abs_x_ub))
+        abs_range_conds.extend(abs(x) <= Expr(ub) for x, ub in zip(x_vars, abs_x_ub))
 
     in_omega_pred = logical_and(
         *abs_range_conds,

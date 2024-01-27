@@ -113,7 +113,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
-            [(self._lya_level_var, self._lya_cand_level_value)] + \
+            [(self._lya_level_var, Expr(self._lya_cand_level_value))] + \
             [(self._lip_var, lip_expr)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
             [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
@@ -144,11 +144,11 @@ class SMTVerifier(PLyapunovVerifier):
         der_lya_vars = [var.der_lya for var in self._all_vars]
 
         if np.isscalar(abs_x_lb):
-            abs_x_lb_conds = [abs(x) >= abs_x_lb for x in x_vars]
+            abs_x_lb_conds = [abs(x) >= Expr(abs_x_lb) for x in x_vars]
         else:
             abs_x_lb = np.asfarray(abs_x_lb)
             assert len(abs_x_lb) == len(x_vars)
-            abs_x_lb_conds = [abs(x) >= lb for x, lb in zip(x_vars, abs_x_lb)]
+            abs_x_lb_conds = [abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb)]
 
         sublevel_set_cond = (self._lya_var <= self._lya_level_var)
 
