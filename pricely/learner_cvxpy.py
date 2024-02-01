@@ -1,8 +1,6 @@
 import cvxpy as cp
 from dreal import Expression as Expr, Variable  # type: ignore
-import math
 import numpy as np
-from numpy.typing import ArrayLike
 from typing import Sequence, Tuple
 
 from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner
@@ -18,7 +16,7 @@ class QuadraticLearner(PLyapunovLearner):
         self._tol = tol
         self._pd_mat = cp.Variable((x_dim, x_dim), name="P", PSD=True)
 
-    def fit_loop(self, x: np.ndarray, y: np.ndarray, max_epochs: int=1, **kwargs) -> Sequence[float]:
+    def fit_loop(self, x: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
         # constraints from samples
         yP = y @ self._pd_mat
         yPx = cp.sum(cp.multiply(yP, x), axis=1)
@@ -48,7 +46,7 @@ class QuadraticLearner(PLyapunovLearner):
                 continue
 
         if prob.status == "optimal":
-            return [obj.value/len(x)]
+            return [obj.value/len(x)]  # type: ignore
         elif prob.status == "infeasible":
             raise RuntimeError("Learner cannot find a quadratic Lyapunov function")
         else:
@@ -57,13 +55,13 @@ class QuadraticLearner(PLyapunovLearner):
     def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
         return (x_vars @ self._pd_mat.value @ x_vars) / 2.0
     
-    def lya_values(self, x_values: np.ndarray) -> np.ndarray:
+    def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         return np.sum((x_values @ self._pd_mat.value) * x_values, axis=1) / 2.0
 
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
         return super().ctrl_exprs(x_vars)
 
-    def ctrl_values(self, x_values: np.ndarray) -> np.ndarray:
+    def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         if self._u_dim == 0:
             return np.array([]).reshape(len(x_values), 0)
         else:
@@ -86,7 +84,7 @@ class SOS1Learner(PLyapunovLearner):
         self._tol = tol
         self._pd_mat = cp.Variable((x_dim + 1, x_dim + 1), name="P", PSD=True)
 
-    def fit_loop(self, x: np.ndarray, y: np.ndarray, max_epochs: int=1, **kwargs) -> Sequence[float]:
+    def fit_loop(self, x: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
         # constraints from samples
         yP = y @ self._pd_mat[1:, 1:]
         yPx = cp.sum(cp.multiply(yP, x), axis=1)
@@ -116,7 +114,7 @@ class SOS1Learner(PLyapunovLearner):
             except cp.SolverError:
                 continue
         if prob.status == "optimal":
-            return [obj.value/len(x)]
+            return [obj.value/len(x)]  # type: ignore
         elif prob.status == "infeasible":
             raise RuntimeError("Learner cannot find a SOS1 Lyapunov function")
         else:
@@ -127,14 +125,14 @@ class SOS1Learner(PLyapunovLearner):
         z_exprs.extend(x_vars)
         return (z_exprs @ self._pd_mat.value @ z_exprs) / 2.0
     
-    def lya_values(self, x_values: np.ndarray) -> np.ndarray:
+    def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         z_values = np.column_stack((np.ones(shape=(len(x_values), 1)), x_values))
         return np.sum((z_values @ self._pd_mat.value) * z_values, axis=1) / 2.0
 
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
         return super().ctrl_exprs(x_vars)
 
-    def ctrl_values(self, x_values: np.ndarray) -> np.ndarray:
+    def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         if self._u_dim == 0:
             return np.array([]).reshape(len(x_values), 0)
         else:

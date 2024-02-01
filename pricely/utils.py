@@ -14,7 +14,8 @@ def check_exact_lyapunov(
     config: Config = Config()
 ) -> Optional[Box]:
     assert np.all(0.0 < np.asfarray(abs_x_lb))
-    assert np.all(np.asfarray(abs_x_lb) < np.asfarray(abs_x_ub)) and np.all(np.isfinite(abs_x_ub))
+    assert np.all(np.isfinite(abs_x_ub))
+    assert np.all(np.asfarray(abs_x_lb) < np.asfarray(abs_x_ub))
 
     sublevel_set_cond = lya_expr <= Expr(level_ub)
 
@@ -25,14 +26,16 @@ def check_exact_lyapunov(
     else:
         abs_x_lb = np.asfarray(abs_x_lb)
         assert len(abs_x_lb) == len(x_vars)
-        abs_range_conds.extend(abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
+        abs_range_conds.extend(
+            abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
 
     if np.isscalar(abs_x_ub):
         abs_range_conds.extend(abs(x) <= Expr(abs_x_ub) for x in x_vars)
     else:
         abs_x_ub = np.asfarray(abs_x_ub)
         assert len(abs_x_ub) == len(x_vars)
-        abs_range_conds.extend(abs(x) <= Expr(ub) for x, ub in zip(x_vars, abs_x_ub))
+        abs_range_conds.extend(
+            abs(x) <= Expr(ub) for x, ub in zip(x_vars, abs_x_ub))
 
     in_omega_pred = logical_and(
         *abs_range_conds,
@@ -72,9 +75,9 @@ def cartesian_prod(*arrays) -> np.ndarray:
 def gen_equispace_regions(
         x_part: Sequence[int],
         x_roi: np.ndarray) -> np.ndarray:
+    """ Generate reference values and bounds of x inside ROI """
     assert x_roi.shape == (2, len(x_part))
     x_dim = len(x_part)
-    # generate dataset (values of x):
     axes_cuts = (np.linspace(
         x_roi[0, i], x_roi[1, i], x_part[i]+1) for i in range(x_dim))
     bound_pts = cartesian_prod(
