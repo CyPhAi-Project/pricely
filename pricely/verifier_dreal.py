@@ -16,6 +16,7 @@ class DRealVars(NamedTuple):
     der_lya: Variable
     lb: Variable
     ub: Variable
+    abs_ub: Variable
     x_s: Variable
     dxdt_s: Variable
 
@@ -48,6 +49,7 @@ class SMTVerifier(PLyapunovVerifier):
                 der_lya=Variable(f"∂V/∂x{pretty_sub(i)}"),
                 lb=Variable(f"x̲{pretty_sub(i)}"),
                 ub=Variable(f"x̄{pretty_sub(i)}"),
+                abs_ub=Variable(f"b{pretty_sub(i)}"),
                 x_s=Variable(f"x̃{pretty_sub(i)}"),
                 dxdt_s=Variable(f"f{pretty_sub(i)}(x̃,ũ)")
             ) for i in range(x_dim)
@@ -63,10 +65,11 @@ class SMTVerifier(PLyapunovVerifier):
 
         self._smt_tpls = self._init_lyapunov_template(abs_x_lb)
 
-        self._lya_cand_expr = None
-        self._lya_cand_level_value = None
-        self._der_lya_cand_exprs = [None]*x_dim
-        self._ctrl_exprs = [None]*u_dim
+        self._lya_cand_expr = Expr(0.0)
+        self._lya_cand_level_ub = np.inf
+        self._abs_x_ub = np.inf
+        self._der_lya_cand_exprs = [Expr(0.0)]*x_dim
+        self._ctrl_exprs = [Expr(0.0)]*u_dim
 
         if config is not None:
             self._config = config
@@ -76,20 +79,31 @@ class SMTVerifier(PLyapunovVerifier):
             self._config.use_local_optimization = True
             self._config.precision = 1e-6
 
-    def set_lyapunov_candidate(self, lya: PLyapunovLearner):
+    @property
+    def x_dim(self) -> int:
+        return len(self._all_vars)
+    
+    @property
+    def u_dim(self) -> int:
+        return len(self._all_inputs)
+
+    def set_lyapunov_candidate(
+            self, lya: PLyapunovLearner):
         x_vars = [xi.x for xi in self._all_vars]
         self._lya_cand_expr = lya.lya_expr(x_vars)
-        self._lya_cand_level_value = lya.find_level_ub(self._x_roi)
+        self._lya_cand_level_ub, self._abs_x_ub = \
+            lya.find_sublevel_set_and_box(self._x_roi)
         self._der_lya_cand_exprs = [
             self._lya_cand_expr.Differentiate(x) for x in x_vars]
-        if len(self._all_inputs) > 0:
+        if self.u_dim > 0:
             self._ctrl_exprs = lya.ctrl_exprs(x_vars)
 
     def reset_lyapunov_candidate(self):
-        self._lya_cand_expr = None
-        self._lya_cand_level_value = None
-        self._der_lya_cand_exprs = [None]*len(self._all_vars)
-        self._ctrl_exprs = [None]*len(self._all_inputs)
+        self._lya_cand_expr = Expr(0.0)
+        self._lya_cand_level_ub = np.inf
+        self._abs_x_ub = np.inf
+        self._der_lya_cand_exprs = [Expr(0.0)]*self.x_dim
+        self._ctrl_exprs = [Expr(0.0)]*self.u_dim
 
     def find_cex(
         self,
@@ -100,20 +114,18 @@ class SMTVerifier(PLyapunovVerifier):
     ) -> Optional[NDArrayFloat]:
         assert self._lya_cand_expr is not None \
             and all(e is not None for e in self._der_lya_cand_exprs)
-        x_dim, u_dim = len(self._all_vars), len(self._all_inputs)
         x_j, x_lb_j, x_ub_j = x_region_j
-        assert len(x_j) == x_dim
-        assert len(x_lb_j) == x_dim
-        assert len(x_ub_j) == x_dim
-        assert len(u_j) == u_dim
-        assert not (u_dim == 0 and self._ctrl_exprs is None)
+        assert len(x_j) == self.x_dim
+        assert len(x_lb_j) == self.x_dim
+        assert len(x_ub_j) == self.x_dim
+        assert len(u_j) == self.u_dim
 
         if isinstance(lip_expr, float):
             lip_expr = Expr(lip_expr)
 
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
-            [(self._lya_level_var, Expr(self._lya_cand_level_value))] + \
+            [(self._lya_level_var, Expr(self._lya_cand_level_ub))] + \
             [(self._lip_var, lip_expr)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
             [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
@@ -122,6 +134,14 @@ class SMTVerifier(PLyapunovVerifier):
             [(xi.dxdt_s, Expr(vi)) for xi, vi in zip(self._all_vars, dxdt_j)] + \
             [(ui.u, ei) for ui, ei in zip(self._all_inputs, self._ctrl_exprs)] + \
             [(ui.u_s, Expr(vi)) for ui, vi in zip(self._all_inputs, u_j)]
+        
+        if np.isscalar(self._abs_x_ub):
+            sub_pairs.extend((xi.abs_ub, Expr(self._abs_x_ub)) for xi in self._all_vars)
+        else:
+            abs_x_ub = np.asfarray(self._abs_x_ub)
+            assert len(abs_x_ub) == len(self._all_vars)
+            sub_pairs.extend((xi.abs_ub, Expr(ub)) for xi, ub in zip(self._all_vars, abs_x_ub))
+
         sub_dict = dict(sub_pairs)
 
         for query_tpl in self._smt_tpls:
@@ -149,10 +169,13 @@ class SMTVerifier(PLyapunovVerifier):
             abs_x_lb = np.asfarray(abs_x_lb)
             assert len(abs_x_lb) == len(x_vars)
             abs_x_lb_conds = [abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb)]
-
+        abs_x_ub_conds = [abs(xi.x) <= xi.abs_ub for xi in self._all_vars]
         sublevel_set_cond = (self._lya_var <= self._lya_level_var)
 
-        in_omega_pred = logical_and(*abs_x_lb_conds, sublevel_set_cond)
+        in_omega_pred = logical_and(
+            *abs_x_lb_conds,
+            *abs_x_ub_conds,
+            sublevel_set_cond)
 
         in_nbr_pred = logical_and(
             *(logical_and(var.x >= var.lb, var.x <= var.ub)
