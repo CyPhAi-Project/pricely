@@ -1,10 +1,50 @@
 from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
 
-def check_exact_lyapunov(
+def _gen_neg_lya_cond(
+        x_vars: Sequence[Variable],
+        dxdt_exprs: Sequence[Expr],
+        lya_expr: Expr) -> Expr:
+    der_lya = [lya_expr.Differentiate(x) for x in x_vars]
+    lie_der_lya = sum(
+        der_lya_i*dxdt_i
+        for der_lya_i, dxdt_i in zip(der_lya, dxdt_exprs))
+    return logical_or(lya_expr <= 0.0, lie_der_lya >= 0.0)
+
+
+def check_lyapunov_roi(
+    x_vars: Sequence[Variable],
+    dxdt_exprs: Sequence[Expr],
+    lya_expr: Expr,
+    x_roi: np.ndarray,
+    abs_x_lb: ArrayLike = 2**-6,
+    config: Config = Config()
+) -> Optional[Box]:
+    assert x_roi.shape == (2, len(x_vars))
+    lb_conds = [x >= Expr(lb) for x, lb in zip(x_vars, x_roi[0])]
+    ub_conds = [x <= Expr(ub) for x, ub in zip(x_vars, x_roi[1])]
+
+    abs_lb_conds = []
+    if np.isscalar(abs_x_lb):
+        abs_lb_conds.extend(abs(x) >= Expr(abs_x_lb) for x in x_vars)
+    else:
+        abs_x_lb = np.asfarray(abs_x_lb)
+        assert len(abs_x_lb) == len(x_vars)
+        abs_lb_conds.extend(
+            abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
+
+    in_roi_pred = logical_and(*lb_conds, *ub_conds, *abs_lb_conds)
+
+    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr)
+    smt_query = logical_and(in_roi_pred, neg_lya_cond)
+    result = CheckSatisfiability(smt_query, config)
+    return result
+
+
+def check_lyapunov_sublevel_set(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
     lya_expr: Expr,
@@ -41,12 +81,7 @@ def check_exact_lyapunov(
         *abs_range_conds,
         sublevel_set_cond)
 
-    der_lya = [lya_expr.Differentiate(x) for x in x_vars]
-    lie_der_lya = sum(
-        der_lya_i*dxdt_i
-        for der_lya_i, dxdt_i in zip(der_lya, dxdt_exprs))
-
-    neg_lya_cond = logical_or(lya_expr <= 0.0, lie_der_lya >= 0.0)
+    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr)
     smt_query = logical_and(in_omega_pred, neg_lya_cond)
     result = CheckSatisfiability(smt_query, config)
     return result
@@ -86,3 +121,30 @@ def gen_equispace_regions(
     ub_pts = bound_pts[(slice(1, None),)*x_dim].reshape((-1, x_dim))
     x = (lb_pts + ub_pts) / 2
     return np.stack((x, lb_pts, ub_pts), axis=1)
+
+
+def gen_lip_bbox(
+        x_dim: int, 
+        f_bbox: Callable[[np.ndarray], np.ndarray],
+        num_cuts: int = 16
+    ) -> Callable[[np.ndarray], float]:
+    num_pts = num_cuts + 1
+    cuts = np.linspace(np.zeros(x_dim), np.ones(x_dim), num_pts).T
+    ratios = cartesian_prod(*cuts).reshape((num_pts**x_dim, x_dim))
+
+    def lip_bbox(region: np.ndarray) -> float:    
+        assert region.shape == (3, x_dim)
+        x_ref, x_lb, x_ub = region
+        x_values = ratios * x_ub + (1.0 - ratios)*x_lb
+        x_dists = np.linalg.norm(x_values - x_ref, axis=1)
+
+        y_ref = f_bbox(x_ref.reshape(1, x_dim))
+        y_values = f_bbox(x_values)
+        y_dists = np.linalg.norm(y_values - y_ref, axis=1)
+        lip_lbs = np.divide(
+                y_dists, x_dists,
+                out=np.full(num_pts**x_dim, np.nan),  # Default nan when Div By 0
+                where=~np.isclose(x_dists, np.zeros_like(x_dists)))
+        lip_lb = np.nanmax(lip_lbs)
+        return lip_lb
+    return lip_bbox

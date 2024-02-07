@@ -120,7 +120,7 @@ class SMTVerifier(PLyapunovVerifier):
         assert len(x_ub_j) == self.x_dim
         assert len(u_j) == self.u_dim
 
-        if isinstance(lip_expr, float):
+        if np.isscalar(lip_expr):
             lip_expr = Expr(lip_expr)
 
         sub_pairs = \

@@ -56,6 +56,14 @@ class PLyapunovLearner(Protocol):
 
 
 class PLyapunovVerifier(Protocol):
+    @abc.abstractproperty
+    def x_dim(self) -> int:
+        raise NotImplementedError
+    
+    @abc.abstractproperty
+    def u_dim(self) -> int:
+        raise NotImplementedError
+
     @abc.abstractmethod
     def set_lyapunov_candidate(self, learner: PLyapunovLearner):
         raise NotImplementedError
@@ -73,7 +81,7 @@ def cegus_lyapunov(
         verifier: PLyapunovVerifier,
         x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
-        lip_bbox: float,
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_iter_learn: int = 10):
     null_arr = np.array([])
@@ -96,7 +104,7 @@ def cegus_lyapunov_control(
         x_regions: NDArrayFloat,
         u_values: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
-        lip_bbox: ArrayLike,
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_iter_learn: int = 10):
     assert x_regions.shape[1] == 3
@@ -122,12 +130,13 @@ def cegus_lyapunov_control(
 
         verifier.set_lyapunov_candidate(learner)
         cex_regions.clear()
+        lip_ubs = lip_bbox(x_regions)
         for j in tqdm(range(len(x_regions)),
                       desc=f"Verify at {epoch}", ascii=True, leave=False):
             result = verifier.find_cex(
                 x_region_j=x_regions[j],
                 u_j=u_values[j],
-                dxdt_j=dxdt_values[j], lip_expr=lip_bbox)
+                dxdt_j=dxdt_values[j], lip_expr=lip_ubs[j].item())
             if result is not None:
                 cex_regions.append((j, result))
 
@@ -147,6 +156,89 @@ def cegus_lyapunov_control(
     return max_epochs, x_regions, cex_regions
 
 
+def cegar_verify_lyapunov(
+        verifier: PLyapunovVerifier,
+        init_x_regions: NDArrayFloat,
+        f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat], float], max_epochs: int = 10):
+    assert verifier.u_dim == 0
+    assert init_x_regions.shape[1] == 3
+    assert max_epochs > 0
+    # Initial sampled x, u values and the constructed set cover
+    x_regions = init_x_regions
+
+    verified = 0
+    outer_pbar = tqdm(
+        iter(range(1, max_epochs + 1)), leave=True,
+        desc="Outer", ascii=True, postfix={"#Not Verified": len(x_regions), "#Verified": verified})
+    cex_regions = []
+    for epoch in outer_pbar:
+        x_values = x_regions[:, 0]
+        dxdt_values = f_bbox(x_values)
+        # Verify Lyapunov condition
+        assert len(x_regions) == len(dxdt_values)
+
+        cex_regions.clear()
+        for j in tqdm(range(len(x_regions)),
+                      desc=f"Verify at {epoch}", ascii=True, leave=False):
+            lip_const = lip_bbox(x_regions[j])
+            result = verifier.find_cex(
+                x_region_j=x_regions[j],
+                u_j=np.array([]),
+                dxdt_j=dxdt_values[j], lip_expr=lip_const)
+            if result is not None:
+                cex_regions.append((j, result))
+
+        verified += len(x_regions) - len(cex_regions)
+        outer_pbar.set_postfix({"#Not Verified": len(cex_regions), "#Verified": verified})
+        if len(cex_regions) == 0:
+            # Lyapunov function candidate passed
+            return epoch, np.zeros(shape=(0, 3, verifier.x_dim))
+        # else:
+        # NOTE splitting regions may also modified the input arrays
+        x_regions = get_unverified_regions(x_regions, cex_regions)
+
+    outer_pbar.close()
+
+    tqdm.write(f"Cannot verify the given Lyapunov function in {max_epochs} iterations.")
+    return max_epochs, x_regions
+
+
+def get_unverified_regions(
+        x_regions: NDArrayFloat,
+        sat_regions: Sequence[Tuple[int, NDArrayFloat]]) -> NDArrayFloat:
+    assert x_regions.shape[1] == 3
+    x_values, x_lbs, x_ubs = x_regions[:, 0], x_regions[:, 1], x_regions[:, 2]
+    new_cexs, new_lbs, new_ubs = [], [], []
+    for j, box_j in sat_regions:
+        res = split_region(x_regions[j], box_j)
+        if res is None:
+            raise RuntimeError("Sampled state is inside cex box")
+        cex, cut_axis, cut_value = res
+        # Shrink the bound for the existing sample
+        # Copy the old bounds
+        cex_lb, cex_ub = x_lbs[j].copy(), x_ubs[j].copy()
+        if cex[cut_axis] < x_values[j][cut_axis]:
+            # Increase lower bound for old sample
+            x_lbs[j][cut_axis] = cut_value
+            cex_ub[cut_axis] = cut_value  # Decrease upper bound for new sample
+        else:
+            assert cex[cut_axis] > x_values[j][cut_axis]
+            # Decrease upper bound for old sample
+            x_ubs[j][cut_axis] = cut_value
+            cex_lb[cut_axis] = cut_value  # Increase lower bound for new sample
+        new_cexs.append(x_values[j])
+        new_cexs.append(cex)
+        new_lbs.append(x_lbs[j])
+        new_lbs.append(cex_lb)
+        new_ubs.append(x_ubs[j])
+        new_ubs.append(cex_ub)
+    x_values = np.row_stack(new_cexs)
+    x_lbs = np.row_stack(new_lbs)
+    x_ubs = np.row_stack(new_ubs)
+    return np.stack((x_values, x_lbs, x_ubs), axis=1)
+
+
 def split_regions(
         x_regions: NDArrayFloat,
         sat_regions: Sequence[Tuple[int, NDArrayFloat]]) -> NDArrayFloat:
@@ -156,6 +248,7 @@ def split_regions(
     for j, box_j in sat_regions:
         res = split_region(x_regions[j], box_j)
         if res is None:
+            # FIXME Why the cex is so close to the sampled value?
             continue
             raise RuntimeError("Sampled state is inside cex box")
         cex, cut_axis, cut_value = res

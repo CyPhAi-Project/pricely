@@ -1,16 +1,6 @@
-from dreal import Config, sin as Sin, tanh as Tanh, Variable  # type: ignore
-from matplotlib.patches import Rectangle
-import matplotlib.pyplot as plt
+from dreal import sin as Sin, tanh as Tanh, Expression as Expr, Variable  # type: ignore
 import numpy as np
-from numpy.typing import ArrayLike
-import time
-
-from plot_utils_2d import add_level_sets, add_valid_regions
-from pricely.cegus_lyapunov import PLyapunovLearner, cegus_lyapunov
-from pricely.learner_cvxpy import QuadraticLearner
-from pricely.learner_mock import MockQuadraticLearner
-from pricely.verifier_dreal import SMTVerifier
-from pricely.utils import check_exact_lyapunov, gen_equispace_regions
+from typing import Sequence
 
 
 def known_lya_values(x_values: np.ndarray) -> np.ndarray:
@@ -36,13 +26,12 @@ L = 0.5  # m
 THETA_LIM = np.pi / 4
 
 X_ROI = np.array([
-    [-THETA_LIM, -4],  # Lower bounds
-    [+THETA_LIM, +4]  # Upper bounds
+    [-THETA_LIM, -2],  # Lower bounds
+    [+THETA_LIM, +2]  # Upper bounds
 ])
 X_DIM = 2
 ABS_X_LB = 0.0625
-LIP_BB = 33.214  # Manually derived for ROI
-
+LIP_CAP = 50.0  # Ignore regions with Lipschitz constant exceed this cap
 
 def ctrl(x: np.ndarray) -> np.ndarray:
     theta, omega = x[:, 0], x[:, 1]
@@ -63,83 +52,31 @@ def f_bbox(x: np.ndarray) -> np.ndarray:
     return f_dyn(x, ctrl(x))
 
 
-def validate(
-        lya: PLyapunovLearner,
-        level_ub: float,
-        abs_x_lb: ArrayLike, abs_x_ub: ArrayLike,
-        config: Config):
-    # Validate with exact Lyapunov conditions
-    x_vars = [Variable("θ"), Variable("ω")]
-    u_expr = 20.0*Tanh(
-            -23.28632*x_vars[0]
-            -5.27055*x_vars[1])
-    dxdt_exprs = [
-        x_vars[1],
-        (M*G*L*Sin(x_vars[0]) + u_expr - 0.1*x_vars[1]) / (M*L**2)
-    ]
-    lya_expr = lya.lya_expr(x_vars)
-    result = check_exact_lyapunov(
-        x_vars, dxdt_exprs,
-        lya_expr, level_ub, abs_x_lb, abs_x_ub, config)
+def f_expr(x_vars: Sequence[Variable]) -> Sequence[Expr]:
+    assert len(x_vars) == X_DIM
+    theta, omega = x_vars
+    u_expr = 20.0*Tanh(-23.28632*theta - 5.27055*omega)
+    return [omega,
+            (M*G*L*Sin(theta) + u_expr - 0.1*omega) / (M*L**2)]
 
 
-def main():
-    x_part = [4]*X_DIM
-    part = x_part
-    x_regions = gen_equispace_regions(part, X_ROI)
-
-    if False:
-        lya = QuadraticLearner(X_DIM)
-    else:
-        b_mat = np.asfarray([
-            [5.0, 0.0],
-            [1.25, 0.25]
-        ])
-        pd_mat = b_mat.T @ b_mat
-        lya = MockQuadraticLearner(pd_mat)
-        _, abs_x_ub = lya.find_sublevel_set_and_box(X_ROI)
-        x_range = np.row_stack((-abs_x_ub, abs_x_ub))
-        x_regions = gen_equispace_regions(x_part, x_range)
-
-    verifier = SMTVerifier(x_roi=X_ROI, abs_x_lb=ABS_X_LB)
-
-    t_start = time.perf_counter()
-    last_epoch, last_x_regions, cex_regions = \
-        cegus_lyapunov(
-            lya, verifier, x_regions,
-            f_bbox, LIP_BB,
-            max_epochs=30, max_iter_learn=1)
-    time_usage = time.perf_counter() - t_start
-    print(f"Total Time: {time_usage:.3f}s")
-
-    level_ub, abs_x_ub = lya.find_sublevel_set_and_box(X_ROI)
-    result = validate(lya, level_ub, ABS_X_LB, abs_x_ub, verifier._config)
-    if result is None:
-        print("Learned candidate is a valid Lyapunov function.")
-    else:
-        print("Learned candidate is NOT a Lyapunov function.")
-        print(f"Counterexample:\n{result}")
-
-    print("Plotting verified regions:")
-    plt.gca().set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
-    plt.gca().set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
-
-    add_valid_regions(
-        plt.gca(), last_epoch, time_usage, last_x_regions, cex_regions)
-    plt.gca().add_patch(Rectangle(
-        (-ABS_X_LB/2, -ABS_X_LB/2), ABS_X_LB, ABS_X_LB, color='gray', fill=False))
-    plt.gca().add_patch(Rectangle(
-        (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='gray', fill=False))
-    plt.gca().add_patch(Rectangle(
-        (X_ROI[0][0], X_ROI[0][1]), X_ROI[1][0]-X_ROI[0][0], X_ROI[1][1]-X_ROI[0][1], color='r', fill=False))
-
-    # Plot Level Set Comparison
-    add_level_sets(plt.gca(), lya.lya_values, level_ub)
-
-    plt.gca().set_aspect("equal")
-    plt.savefig(f"out/InvertedPendulum-valid_regions-{'x'.join(str(n) for n in x_part)}-{lya.__class__.__name__}.png")
-    plt.clf()
-
-
-if __name__ == "__main__":
-    main()
+def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
+    """
+    Use Frobenious Norm of the Jacobian matrix to provide a local Lipschitz constant
+    The supremum is at the point that minimizes tanh(-23.28632*theta - 5.27055*omega);
+    hence, we can pick the point closest to the line: -23.28632*theta - 5.27055*omega == 0.
+    We further use the vertice to check if the hyperrectangle contains a point on the line,
+    otherwise we can use the closest vertex.
+    """
+    assert x_regions.shape[1] == 3 and x_regions.shape[2] == X_DIM
+    values = -23.28632*x_regions[:, :, 0] - 5.27055*x_regions[:, :, 1]
+    assert values.shape == (len(x_regions), 3)
+    min_values = np.where(np.sign(values[:, 1]) == np.sign(values[:, 2]),
+                          np.min(np.abs(values), axis=1), 0.0)
+    assert min_values.ndim == 1 and len(min_values) == len(x_regions)
+    max_du = 1.0 - np.tanh(min_values)**2
+    # Forbenious norm
+    # lip_ub = np.sqrt(((M*L**2)**2 + (20*5.27055*max_du - 0.1)**2 + (M*G*L + 20*23.28632*max_du)**2)) / (M*L**2)
+    # Convex upper bound for the Forbenious norm
+    lip_ub = np.sqrt(((M*L**2)**2 + (20*5.27055*max_du)**2 + 0.1**2 + (M*G*L + 20*23.28632*max_du)**2)) / (M*L**2)
+    return np.full(len(x_regions), fill_value=lip_ub)
