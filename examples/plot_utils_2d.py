@@ -28,13 +28,10 @@ def add_level_sets(
     ax.contour(X, Y, Z, levels, colors=colors)
 
 
-def add_valid_regions(ax: Axes, num_iters: int, time_usage: float, regions: np.ndarray, cex_regions):
+def add_valid_regions(ax: Axes, num_iters: int, regions: np.ndarray, cex_regions):
     # Contain ref value, lower bound, and upper bound
     assert regions.shape[1] == 3
     assert regions.shape[2] == 2   # Only for 2D states
-    ax.set_title(f"# iteration: {num_iters}. "
-                 f"# total samples: {len(regions)}. "
-                 f"Time: {time_usage:.3f}s")
     x_values, x_lbs, x_ubs = \
         regions[:, 0], regions[:, 1], regions[:, 2]
 
