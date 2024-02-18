@@ -41,7 +41,7 @@ class QuadraticLearner(PLyapunovLearner):
         for solver in [cp.CVXOPT, cp.CLARABEL]:
             try:
                 prob.solve(solver)
-                break  # Break when any solver suceeded
+                break  # Early terminate when a solver suceeded
             except cp.SolverError:
                 continue
 
@@ -59,13 +59,16 @@ class QuadraticLearner(PLyapunovLearner):
         return np.sum((x_values @ self._pd_mat.value) * x_values, axis=1) / 2.0
 
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
-        return super().ctrl_exprs(x_vars)
+        if self._u_dim == 0:
+            return []
+        else:
+            raise NotImplementedError
 
     def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         if self._u_dim == 0:
             return np.array([]).reshape(len(x_values), 0)
         else:
-            return super().ctrl_values(x_values)
+            raise NotImplementedError
 
     def find_sublevel_set_and_box(self, x_roi: NDArrayFloat) -> Tuple[float, NDArrayFloat]:
         level_ub = self.find_level_ub(x_roi)
@@ -110,7 +113,7 @@ class SOS1Learner(PLyapunovLearner):
         for solver in [cp.CVXOPT, cp.CLARABEL]:
             try:
                 prob.solve(solver)
-                break  # Break when any solver suceeded
+                break  # Early terminate when a solver succeeded
             except cp.SolverError:
                 continue
         if prob.status == "optimal":
@@ -130,10 +133,13 @@ class SOS1Learner(PLyapunovLearner):
         return np.sum((z_values @ self._pd_mat.value) * z_values, axis=1) / 2.0
 
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
-        return super().ctrl_exprs(x_vars)
+        if self._u_dim == 0:
+            return []
+        else:
+            raise NotImplementedError
 
     def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         if self._u_dim == 0:
             return np.array([]).reshape(len(x_values), 0)
         else:
-            return super().ctrl_values(x_values)
+            raise NotImplementedError
