@@ -1,6 +1,7 @@
 import abc
-from dreal import Expression as Expr, Variable  # type: ignore
+from dreal import Expression as Expr, CheckSatisfiability, Variable  # type: ignore
 import itertools
+from joblib import Parallel, delayed
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from tqdm import tqdm
@@ -157,15 +158,31 @@ def cegus_lyapunov_control(
 
 
 def cegar_verify_lyapunov(
-        verifier: PLyapunovVerifier,
+        learner: PLyapunovLearner,
+        x_roi: NDArrayFloat,
+        abs_x_lb: ArrayLike,
         init_x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
-        lip_bbox: Callable[[NDArrayFloat], float], max_epochs: int = 10):
-    assert verifier.u_dim == 0
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat], max_epochs: int = 10):
     assert init_x_regions.shape[1] == 3
     assert max_epochs > 0
     # Initial sampled x, u values and the constructed set cover
     x_regions = init_x_regions
+    x_dim = init_x_regions.shape[2]
+
+    def parallelizable_verify(
+            x_region_j: Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat],
+            u_j: NDArrayFloat,
+            dxdt_j: NDArrayFloat,
+            lip_ub: float):
+        from pricely.verifier_dreal import SMTVerifier
+        verifier = SMTVerifier(x_roi=x_roi, abs_x_lb=abs_x_lb)
+        verifier.set_lyapunov_candidate(learner)
+        return verifier.find_cex(
+            x_region_j=x_region_j,
+            u_j=u_j,
+            dxdt_j=dxdt_j,
+            lip_expr=lip_ub)
 
     verified = 0
     outer_pbar = tqdm(
@@ -179,21 +196,24 @@ def cegar_verify_lyapunov(
         assert len(x_regions) == len(dxdt_values)
 
         cex_regions.clear()
-        for j in tqdm(range(len(x_regions)),
-                      desc=f"Verify at {epoch}", ascii=True, leave=False):
-            lip_const = lip_bbox(x_regions[j])
-            result = verifier.find_cex(
-                x_region_j=x_regions[j],
-                u_j=np.array([]),
-                dxdt_j=dxdt_values[j], lip_expr=lip_const)
-            if result is not None:
-                cex_regions.append((j, result))
+        lip_ubs = lip_bbox(x_regions)
+
+        results = tqdm(enumerate(
+            Parallel(n_jobs=16, return_as="generator", prefer="processes")(
+            delayed(parallelizable_verify)(
+                    x_region_j=x_regions[j],
+                    u_j=np.array([]),
+                    dxdt_j=dxdt_values[j],
+                    lip_ub=lip_ubs[j]) for j in range(len(x_regions)))),
+            desc=f"Verify at {epoch}", 
+            total=len(x_regions), ascii=True, leave=False)
+        cex_regions = [(j, result) for j, result in results if result is not None]
 
         verified += len(x_regions) - len(cex_regions)
         outer_pbar.set_postfix({"#Not Verified": len(cex_regions), "#Verified": verified})
         if len(cex_regions) == 0:
             # Lyapunov function candidate passed
-            return epoch, np.zeros(shape=(0, 3, verifier.x_dim))
+            return epoch, np.zeros(shape=(0, 3, x_dim))
         # else:
         # NOTE splitting regions may also modified the input arrays
         x_regions = get_unverified_regions(x_regions, cex_regions)
@@ -208,35 +228,41 @@ def get_unverified_regions(
         x_regions: NDArrayFloat,
         sat_regions: Sequence[Tuple[int, NDArrayFloat]]) -> NDArrayFloat:
     assert x_regions.shape[1] == 3
-    x_values, x_lbs, x_ubs = x_regions[:, 0], x_regions[:, 1], x_regions[:, 2]
-    new_cexs, new_lbs, new_ubs = [], [], []
-    for j, box_j in sat_regions:
-        res = split_region(x_regions[j], box_j)
+
+    def parallelizable_split(x_region_j: NDArrayFloat, box_j: NDArrayFloat):
+        res = split_region(x_region_j, box_j)
         if res is None:
+            # FIXME Why the cex is so close to the sampled value?
             raise RuntimeError("Sampled state is inside cex box")
+        x_j, x_lb_j, x_ub_j = x_region_j
         cex, cut_axis, cut_value = res
-        # Shrink the bound for the existing sample
-        # Copy the old bounds
-        cex_lb, cex_ub = x_lbs[j].copy(), x_ubs[j].copy()
-        if cex[cut_axis] < x_values[j][cut_axis]:
+        cex_lb, cex_ub = x_lb_j.copy(), x_ub_j.copy()
+
+        if cex[cut_axis] < x_j[cut_axis]:
             # Increase lower bound for old sample
-            x_lbs[j][cut_axis] = cut_value
+            x_lb_j[cut_axis] = cut_value
             cex_ub[cut_axis] = cut_value  # Decrease upper bound for new sample
         else:
-            assert cex[cut_axis] > x_values[j][cut_axis]
+            assert cex[cut_axis] > x_j[cut_axis]
             # Decrease upper bound for old sample
-            x_ubs[j][cut_axis] = cut_value
+            x_ub_j[cut_axis] = cut_value
             cex_lb[cut_axis] = cut_value  # Increase lower bound for new sample
-        new_cexs.append(x_values[j])
-        new_cexs.append(cex)
-        new_lbs.append(x_lbs[j])
-        new_lbs.append(cex_lb)
-        new_ubs.append(x_ubs[j])
-        new_ubs.append(cex_ub)
-    x_values = np.row_stack(new_cexs)
-    x_lbs = np.row_stack(new_lbs)
-    x_ubs = np.row_stack(new_ubs)
-    return np.stack((x_values, x_lbs, x_ubs), axis=1)
+        return np.row_stack((x_j, x_lb_j, x_ub_j)), \
+            np.row_stack((cex, cex_lb, cex_ub))
+
+    results = tqdm(Parallel(n_jobs=16, return_as="generator", prefer="processes")(
+        delayed(parallelizable_split)(
+                x_region_j=x_regions[j],
+                box_j=box_j) for j, box_j in sat_regions),
+        desc=f"Split regions",
+        total=len(sat_regions), ascii=True, leave=False
+    )
+    new_regions = []
+    for old_region, cex_region in results:  # type: ignore
+        new_regions.append(old_region)
+        new_regions.append(cex_region)
+    new_regions = np.stack(new_regions, axis=0)
+    return np.asfarray(new_regions)
 
 
 def split_regions(

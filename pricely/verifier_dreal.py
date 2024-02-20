@@ -1,4 +1,4 @@
-from dreal import CheckSatisfiability, Config, Expression as Expr, Max, Variable, logical_and  # type: ignore
+from dreal import CheckSatisfiability, Config, Expression as Expr, Max, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Tuple, Union
@@ -77,7 +77,7 @@ class SMTVerifier(PLyapunovVerifier):
             self._config = Config()
             self._config.use_polytope_in_forall = True
             self._config.use_local_optimization = True
-            self._config.precision = 1e-6
+            self._config.precision = 1e-9
 
     @property
     def x_dim(self) -> int:
@@ -144,15 +144,16 @@ class SMTVerifier(PLyapunovVerifier):
 
         sub_dict = dict(sub_pairs)
 
-        for query_tpl in self._smt_tpls:
-            smt_query = query_tpl.Substitute(sub_dict)
-            result = CheckSatisfiability(smt_query, self._config)
-            if result:
-                x_vars  = [var.x for var in self._all_vars]
-                box_np = np.asfarray(
-                    [[result[var].lb(), result[var].ub()] for var in x_vars]).transpose()
-                return box_np
-        return None
+        smt_query = logical_or(*(query_tpl.Substitute(sub_dict) for query_tpl in self._smt_tpls))
+        result = CheckSatisfiability(smt_query, self._config)
+        if not result:
+            return None
+        else:
+            x_vars  = [var.x for var in self._all_vars]
+            box_np = np.asfarray(
+                [[result[var].lb(), result[var].ub()] for var in x_vars]).transpose()
+            return box_np
+            
 
     def _init_lyapunov_template(
             self,

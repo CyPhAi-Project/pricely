@@ -31,7 +31,13 @@ X_ROI = np.array([
 ])
 X_DIM = 2
 ABS_X_LB = 0.0625
-LIP_CAP = 50.0  # Ignore regions with Lipschitz constant exceed this cap
+LIP_CAP = 10000.0  # Ignore regions with Lipschitz constant exceed this cap
+
+B_MAT = np.array([
+    [5, 0],
+    [1.25, 0.25]])
+KNOWN_QUAD_LYA = B_MAT.T @ B_MAT
+
 
 def ctrl(x: np.ndarray) -> np.ndarray:
     theta, omega = x[:, 0], x[:, 1]

@@ -16,6 +16,11 @@ assert X_ROI.shape == (2, X_DIM)
 LIP_CAP = 20
 ABS_X_LB = 2**-10
 
+KNOWN_QUAD_LYA = np.array([
+    [0.25, 0, 0],
+    [   0, 1, 0],
+    [   0, 0, 1]])
+
 
 def f_bbox(q: np.ndarray) -> np.ndarray:
     assert(q.shape[1] == X_DIM)

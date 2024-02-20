@@ -8,11 +8,17 @@ VEL = 1.0  # m/s
 X_DIM = 2
 THETA_LIM = np.pi / 4
 X_ROI = np.array([
-    [-0.8, -THETA_LIM],  # Lower bounds
-    [+0.8, +THETA_LIM]  # Upper bounds
+    [-0.75, -THETA_LIM],  # Lower bounds
+    [+0.75, +THETA_LIM]  # Upper bounds
 ])
 assert X_ROI.shape == (2, X_DIM)
 ABS_X_LB = 2**-6
+
+B_MAT = np.array([
+    [2.75, 0],
+    [0.625, 1]])
+KNOWN_QUAD_LYA = B_MAT.T @ B_MAT
+
 
 def ctrl(x: np.ndarray) -> np.ndarray:
     d_e, theta_e = x[:, 0], x[:, 1]
@@ -43,7 +49,7 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
     lip_ubs = np.sqrt(
         VEL**2 + 
         (5.0*-5.95539 - VEL*KAPPA*KAPPA/(tmp**2))**2 + 
-        (5.0*-4.03426)**2 + (VEL*KAPPA/tmp)**2)
+        2*(5.0*-4.03426)**2 + 2*(VEL*KAPPA/tmp)**2)
     return lip_ubs
 
 
