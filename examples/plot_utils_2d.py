@@ -1,7 +1,12 @@
+from joblib import Parallel, delayed
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
 import numpy as np
-from typing import Callable
+import time
+from tqdm import tqdm
+from typing import Callable, Sequence
+
+from pricely.utils import gen_equispace_regions, gen_lip_bbox
 
 
 def add_level_sets(
@@ -50,3 +55,42 @@ def add_valid_regions(ax: Axes, num_iters: int, regions: np.ndarray, cex_regions
         rect = Rectangle(x_lbs[j], w, h, fill=True,
                          edgecolor='black', facecolor=facecolor, alpha=0.3)
         ax.add_patch(rect)
+
+
+class CatchTime:
+    @property
+    def elapsed(self) -> float:
+        return self._elapsed
+
+    def __enter__(self):
+        self._start = time.perf_counter()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self._elapsed = time.perf_counter() - self._start
+        self._readout = f'Time Usage: {self._elapsed:.3f} seconds'
+        print(self._readout)
+
+
+def validate_lip_bbox(mod, parts: Sequence[int]):
+    est_lip_lb = gen_lip_bbox(mod.X_DIM, mod.f_bbox)
+
+    regions = gen_equispace_regions(parts, mod.X_ROI)
+
+    lip_values = mod.calc_lip_bbox(regions)
+    result_iter = tqdm(
+        Parallel(n_jobs=16, return_as="generator", prefer="processes")(
+            delayed(est_lip_lb)(reg) for reg in regions),
+        desc=f"Validate Lipshitz Constants",
+        total=len(regions), ascii=True)
+    lip_lbs = np.fromiter(result_iter, dtype=float)
+
+    min_lb_idx = np.argmin(lip_lbs)
+    max_lb_idx = np.argmax(lip_lbs)
+    min_diff_idx = np.argmin(lip_values - lip_lbs)
+    max_diff_idx = np.argmax(lip_values -lip_lbs)
+    print(f"Min Estimated vs Provided: {lip_lbs[min_lb_idx]:.3f} <= {lip_values[min_lb_idx]:.3f}")
+    print(f"Max Estimated vs Provided: {lip_lbs[max_lb_idx]:.3f} <= {lip_values[max_lb_idx]:.3f}")
+    print(f"Best diff: {lip_lbs[min_diff_idx]:.3f} <= {lip_values[min_diff_idx]:.3f}")
+    print(f"Worst diff: {lip_lbs[max_diff_idx]:.3f} <= {lip_values[max_diff_idx]:.3f}")
+    assert np.all(lip_lbs <= lip_values)

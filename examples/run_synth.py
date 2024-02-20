@@ -1,58 +1,21 @@
 from dreal import Variable  # type: ignore
 import numpy as np
-import time
 
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 
-from plot_utils_2d import add_level_sets, add_valid_regions
+from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
 from pricely.cegus_lyapunov import cegus_lyapunov
-from pricely.learner_cvxpy import QuadraticLearner
-from pricely.utils import check_lyapunov_roi, check_lyapunov_sublevel_set, gen_equispace_regions, gen_lip_bbox
-from pricely.verifier_dreal import SMTVerifier, pretty_sub
 from pricely.gen_cover import gen_init_cover
-
-
-class CatchTime:
-    @property
-    def elapsed(self) -> float:
-        return self._elapsed
-
-    def __enter__(self):
-        self._start = time.perf_counter()
-        return self
-
-    def __exit__(self, type, value, traceback):
-        self._elapsed = time.perf_counter() - self._start
-        self._readout = f'Time Usage: {self._elapsed:.3f} seconds'
-        print(self._readout)
-
-
-def validate_lip_bbox(mod, parts):
-    est_lip_lb = gen_lip_bbox(mod.X_DIM, mod.f_bbox)
-
-    regions = gen_equispace_regions(parts, mod.X_ROI)
-
-    lip_values = mod.calc_lip_bbox(regions)
-    lip_lbs = np.fromiter((est_lip_lb(reg) for reg in regions), dtype=float)
-
-    min_lb_idx = np.argmin(lip_lbs)
-    max_lb_idx = np.argmax(lip_lbs)
-    min_diff_idx = np.argmin(lip_values - lip_lbs)
-    max_diff_idx = np.argmax(lip_values -lip_lbs)
-    print(f"Min Estimated vs Provided: {lip_lbs[min_lb_idx]:.3f} <= {lip_values[min_lb_idx]:.3f}")
-    print(f"Max Estimated vs Provided: {lip_lbs[max_lb_idx]:.3f} <= {lip_values[max_lb_idx]:.3f}")
-    print(f"Best diff: {lip_lbs[min_diff_idx]:.3f} <= {lip_values[min_diff_idx]:.3f}")
-    print(f"Worst diff: {lip_lbs[max_diff_idx]:.3f} <= {lip_values[max_diff_idx]:.3f}")
-    assert np.all(lip_lbs <= lip_values)
+from pricely.learner_cvxpy import QuadraticLearner
+from pricely.utils import check_lyapunov_roi, check_lyapunov_sublevel_set
+from pricely.verifier_dreal import SMTVerifier, pretty_sub
 
 
 def main(max_epochs: int=15):
     # import circle_following as mod
     # import lcss2020_eq5 as mod
     # import lcss2020_eq13 as mod
-    # import lcss2020_eq14 as mod
-    # import lcss2020_eq15 as mod
     import path_following_stanley as mod
     # import van_der_pol as mod
 
@@ -110,6 +73,9 @@ def main(max_epochs: int=15):
             print("The Basin of Attraction cannot cover the entire ROI.")
             print(f"Counterexample:\n{result}")
         cover_roi = (result is None)
+
+    if mod.X_DIM != 2:  # Support plotting 2D systems only
+        return
 
     print(" Plotting verified regions ".center(80, "="))
     # Calculate the axis-aligned bounding box
