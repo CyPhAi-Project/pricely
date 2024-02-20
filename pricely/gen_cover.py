@@ -59,12 +59,10 @@ def gen_init_cover(
         near_origin = np.logical_and(
             np.all(x_lbs >= -abs_lb_arr, axis=1),
             np.all(x_ubs <= +abs_lb_arr, axis=1))
-        if radius > 2**-7:
-            may_ignore = near_origin
-        else:
-            # Also igore when Lipschitz constant is too large and the region is small
-            large_lip = (lip_ubs > lip_cap)
-            may_ignore = np.logical_or(near_origin, large_lip)    
+        
+        # Also igore when Lipschitz constant is too large and the region is small
+        large_lip = (lip_ubs > lip_cap)
+        may_ignore = np.logical_or(near_origin, large_lip)    
 
         may_prove = np.logical_and(
             norm_y_values - lip_ubs*radius >= 0.0,
