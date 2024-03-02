@@ -9,6 +9,7 @@ from pricely.verifier_dreal import SMTVerifier
 
 def main(max_epochs: int=200):
     # import circle_following as mod
+    # import ex_1d as mod
     # import inverted_pendulum as mod
     # import lcss2020_eq14 as mod
     # import lcss2020_eq15 as mod

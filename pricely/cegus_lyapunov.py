@@ -46,8 +46,9 @@ class PLyapunovLearner(Protocol):
         if x_dim > 16:
             warnings.warn(f"Generating 2^{x_dim} = {2**x_dim} vertices of the unit cube."
                             "This may take a while.")
-        unit_cube = np.fromiter(itertools.product((0.0, 1.0), repeat=x_dim),
-                                dtype=np.dtype((np.float_, x_dim)))
+        unit_cube= np.array([[0.0], [1.0]]) if x_dim == 1 \
+            else np.fromiter(itertools.product((0.0, 1.0), repeat=x_dim),
+                             dtype=np.dtype((np.float_, x_dim)))
         vertices = x_lb + unit_cube * (x_ub - x_lb)
         return float(np.max(self.lya_values(vertices)))
     
