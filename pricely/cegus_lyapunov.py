@@ -108,7 +108,8 @@ def cegus_lyapunov_control(
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
-        max_iter_learn: int = 10):
+        max_iter_learn: int = 10,
+        max_num_samples: int = 5*10**5):
     assert x_regions.shape[1] == 3
     assert len(x_regions) == len(u_values)
     assert max_epochs > 0
@@ -146,6 +147,10 @@ def cegus_lyapunov_control(
         if len(cex_regions) == 0:
             # Lyapunov function candidate passed
             return epoch, x_regions, cex_regions
+        if len(x_regions) + len(cex_regions) >= max_num_samples:
+            tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
+            return max_epochs, x_regions, cex_regions
+
         # else:
         # NOTE splitting regions may also modified the input arrays
         x_regions = split_regions(x_regions, cex_regions)
@@ -164,7 +169,9 @@ def cegar_verify_lyapunov(
         abs_x_lb: ArrayLike,
         init_x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
-        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat], max_epochs: int = 10):
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        max_epochs: int = 10,
+        max_num_samples: int = 10**7):
     assert init_x_regions.shape[1] == 3
     assert max_epochs > 0
     # Initial sampled x, u values and the constructed set cover
@@ -214,7 +221,10 @@ def cegar_verify_lyapunov(
         outer_pbar.set_postfix({"#Not Verified": len(cex_regions), "#Verified": verified})
         if len(cex_regions) == 0:
             # Lyapunov function candidate passed
-            return epoch, np.zeros(shape=(0, 3, x_dim))
+            return epoch, verified, np.zeros(shape=(0, 3, x_dim))
+        if verified + len(cex_regions) > max_num_samples:
+            tqdm.write(f"Exceed max # samples {max_num_samples}.")
+            return epoch, verified + len(cex_regions), x_regions
         # else:
         # NOTE splitting regions may also modified the input arrays
         x_regions = get_unverified_regions(x_regions, cex_regions)
@@ -222,7 +232,7 @@ def cegar_verify_lyapunov(
     outer_pbar.close()
 
     tqdm.write(f"Cannot verify the given Lyapunov function in {max_epochs} iterations.")
-    return max_epochs, x_regions
+    return max_epochs, verified + len(cex_regions), x_regions
 
 
 def get_unverified_regions(

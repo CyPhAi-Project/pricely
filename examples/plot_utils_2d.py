@@ -57,6 +57,26 @@ def add_valid_regions(ax: Axes, num_iters: int, regions: np.ndarray, cex_regions
         ax.add_patch(rect)
 
 
+def plot_cegar_result(
+        ax: Axes, num_iters: int,
+        init_regions: np.ndarray, cex_regions: np.ndarray):
+    x_values, x_lbs, x_ubs = \
+        init_regions[:, 0], init_regions[:, 1], init_regions[:, 2]
+    for j in range(len(init_regions)):
+        w, h = x_ubs[j] - x_lbs[j]
+        rect = Rectangle(x_lbs[j], w, h, fill=True,
+                         edgecolor='black', facecolor="white", alpha=0.3)
+        ax.add_patch(rect)
+    
+    x_values, x_lbs, x_ubs = \
+        cex_regions[:, 0], cex_regions[:, 1], cex_regions[:, 2]
+    for j in range(len(cex_regions)):
+        w, h = x_ubs[j] - x_lbs[j]
+        rect = Rectangle(x_lbs[j], w, h, fill=True,
+                         edgecolor='black', facecolor="red", alpha=0.3)
+        ax.add_patch(rect)
+
+
 class CatchTime:
     @property
     def elapsed(self) -> float:
