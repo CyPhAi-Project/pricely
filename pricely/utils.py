@@ -7,12 +7,14 @@ from typing import Callable, Optional, Sequence
 def _gen_neg_lya_cond(
         x_vars: Sequence[Variable],
         dxdt_exprs: Sequence[Expr],
-        lya_expr: Expr) -> Expr:
+        lya_expr: Expr,
+        lya_decay_rate: float) -> Expr:
+    assert lya_decay_rate >= 0.0
     der_lya = [lya_expr.Differentiate(x) for x in x_vars]
     lie_der_lya = sum(
         der_lya_i*dxdt_i
         for der_lya_i, dxdt_i in zip(der_lya, dxdt_exprs))
-    return logical_or(lya_expr <= 0.0, lie_der_lya >= 0.0)
+    return logical_or(lya_expr <= 0.0, lie_der_lya + lya_decay_rate*lya_expr >= 0.0)
 
 
 def check_lyapunov_roi(
@@ -20,6 +22,7 @@ def check_lyapunov_roi(
     dxdt_exprs: Sequence[Expr],
     lya_expr: Expr,
     x_roi: np.ndarray,
+    lya_decay_rate: float = 0.0,
     abs_x_lb: ArrayLike = 2**-6,
     config: Config = Config()
 ) -> Optional[Box]:
@@ -38,7 +41,7 @@ def check_lyapunov_roi(
 
     in_roi_pred = logical_and(*lb_conds, *ub_conds, *abs_lb_conds)
 
-    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr)
+    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr, lya_decay_rate)
     smt_query = logical_and(in_roi_pred, neg_lya_cond)
     result = CheckSatisfiability(smt_query, config)
     return result
@@ -48,6 +51,7 @@ def check_lyapunov_sublevel_set(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
     lya_expr: Expr,
+    lya_decay_rate: float = 0.0,
     level_ub: float = np.inf,
     abs_x_lb: ArrayLike = 2**-6,
     abs_x_ub: ArrayLike = 2**6,
@@ -81,7 +85,7 @@ def check_lyapunov_sublevel_set(
         *abs_range_conds,
         sublevel_set_cond)
 
-    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr)
+    neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr, lya_decay_rate)
     smt_query = logical_and(in_omega_pred, neg_lya_cond)
     result = CheckSatisfiability(smt_query, config)
     return result

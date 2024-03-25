@@ -24,6 +24,9 @@ class PLyapunovLearner(Protocol):
     def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         raise NotImplementedError
 
+    def lya_decay_rate(self) -> float:
+        return 0.0  # default no decay
+
     @abc.abstractmethod
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
         raise NotImplementedError

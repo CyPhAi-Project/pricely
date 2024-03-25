@@ -54,9 +54,13 @@ def main(max_epochs: int=15):
         x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(mod.X_DIM)]
         dxdt_exprs = mod.f_expr(x_vars)
         lya_expr = learner.lya_expr(x_vars)
+        lya_decay_rate = learner.lya_decay_rate()
+        print(f"Decay rate of Lyapunov potential: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
-            mod.X_ROI, mod.ABS_X_LB, config=verifier._config)
+            mod.X_ROI,
+            lya_decay_rate,
+            mod.ABS_X_LB, config=verifier._config)
         if result is None:
             print("Learned candidate is a valid Lyapunov function for ROI.")
         else:
@@ -65,7 +69,7 @@ def main(max_epochs: int=15):
         validation = (result is None)
 
         result = check_lyapunov_sublevel_set(
-            x_vars, dxdt_exprs, lya_expr,
+            x_vars, dxdt_exprs, lya_expr, lya_decay_rate,
             level_ub, mod.ABS_X_LB, abs_x_ub, config=verifier._config)
         if result is None:
             print("The Basin of Attraction can cover the entire ROI.")

@@ -1,4 +1,4 @@
-from dreal import CheckSatisfiability, Config, Expression as Expr, Max, Variable, logical_and, logical_or  # type: ignore
+from dreal import CheckSatisfiability, Config, Expression as Expr, Max, sqrt as Sqrt, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Tuple, Union
@@ -41,6 +41,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         x_dim = x_roi.shape[1]
         self._lya_var = Variable("V")
+        self._decay_var = Variable("λ")
         self._lya_level_var = Variable("c")
         self._lip_var = Variable("Lip")
         self._all_vars = [
@@ -66,6 +67,7 @@ class SMTVerifier(PLyapunovVerifier):
         self._smt_tpls = self._init_lyapunov_template(abs_x_lb)
 
         self._lya_cand_expr = Expr(0.0)
+        self._decay_expr = Expr(0.0)
         self._lya_cand_level_ub = np.inf
         self._abs_x_ub = np.inf
         self._der_lya_cand_exprs = [Expr(0.0)]*x_dim
@@ -91,6 +93,7 @@ class SMTVerifier(PLyapunovVerifier):
             self, lya: PLyapunovLearner):
         x_vars = [xi.x for xi in self._all_vars]
         self._lya_cand_expr = lya.lya_expr(x_vars)
+        self._decay_expr = Expr(lya.lya_decay_rate())
         self._lya_cand_level_ub, self._abs_x_ub = \
             lya.find_sublevel_set_and_box(self._x_roi)
         self._der_lya_cand_exprs = [
@@ -100,6 +103,7 @@ class SMTVerifier(PLyapunovVerifier):
 
     def reset_lyapunov_candidate(self):
         self._lya_cand_expr = Expr(0.0)
+        self._decay_expr = Expr(0.0)
         self._lya_cand_level_ub = np.inf
         self._abs_x_ub = np.inf
         self._der_lya_cand_exprs = [Expr(0.0)]*self.x_dim
@@ -125,6 +129,7 @@ class SMTVerifier(PLyapunovVerifier):
 
         sub_pairs = \
             [(self._lya_var, self._lya_cand_expr)] + \
+            [(self._decay_var, self._decay_expr)] + \
             [(self._lya_level_var, Expr(self._lya_cand_level_ub))] + \
             [(self._lip_var, lip_expr)] + \
             [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
@@ -195,19 +200,19 @@ class SMTVerifier(PLyapunovVerifier):
             neg_trig_cond_list.append(neg_trig_cond_l1)
 
         if use_l2:  # Cauchy-Schwarz inequality
-            der_lya_l2_sq = sum(e*e for e in der_lya_vars)
-            dist_sq = \
-                sum((var.x-var.x_s)**2 for var in self._all_vars) + \
-                sum((var.u-var.u_s)**2 for var in self._all_inputs)
-            # (|∂V/∂x||(x-x̃,u-ũ)|Lip)²>= |∂V/∂x⋅f(x̃,ũ)|²
-            neg_trig_cond_l2 = der_lya_l2_sq*dist_sq*(self._lip_var**2) >= lie_der_lya**2
+            der_lya_l2 = Sqrt(sum(e*e for e in der_lya_vars))
+            dist = Sqrt(
+                sum((var.x-var.x_s)**2 for var in self._all_vars) +
+                sum((var.u-var.u_s)**2 for var in self._all_inputs))
+            # (|∂V/∂x||(x-x̃,u-ũ)|Lip) + ∂V/∂x⋅f(x̃,ũ) + λV(x) >= 0.0
+            neg_trig_cond_l2 = der_lya_l2*dist*self._lip_var + lie_der_lya + self._decay_var*self._lya_var >= 0.0
             neg_trig_cond_list.append(neg_trig_cond_l2)
 
         neg_trig_cond = logical_and(*neg_trig_cond_list)
         # Validity Cond: forall x in [lb, ub].
-        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip < -∂V/∂x⋅f(x̃,ũ)
+        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip + ∂V/∂x⋅f(x̃,ũ) < -λV(x)
         # SMT Cond: exists x in [lb, ub].
-        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ |∂V/∂x||(x-x̃,u-ũ)|Lip >= -∂V/∂x⋅f(x̃,ũ)
+        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ |∂V/∂x||(x-x̃,u-ũ)|Lip + ∂V/∂x⋅f(x̃,ũ) + λV(x) >= 0
         return [
             logical_and(in_omega_pred, in_nbr_pred, cond)
             for cond in [self._lya_var <= 0, lie_der_lya >= 0, neg_trig_cond]]
