@@ -1,5 +1,7 @@
+from datetime import date
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from plot_utils_2d import CatchTime, plot_cegar_result, validate_lip_bbox
 
@@ -7,6 +9,9 @@ from pricely.gen_cover import gen_init_cover
 from pricely.cegus_lyapunov import cegar_verify_lyapunov
 from pricely.learner_mock import MockQuadraticLearner
 from pricely.verifier_dreal import SMTVerifier
+
+
+OUT_DIR = Path(f"out/{str(date.today())}")
 
 
 def main(max_epochs: int=200):
@@ -71,10 +76,13 @@ def main(max_epochs: int=200):
     plt.gca().set_aspect("equal")
     plt.tight_layout()
     cap_str = f"-cap_{int(lip_cap)}" if np.isfinite(lip_cap) else ""
-    f_name = f"out/verify-{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}{cap_str}.png"
-    plt.savefig(f_name)
+
+    OUT_DIR.mkdir(exist_ok=True)
+    f_name = f"verify-{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}{cap_str}.png"
+    f_path = OUT_DIR / f_name
+    plt.savefig(f_path)
     plt.clf()
-    print(f'The plot is saved to "{f_name}".')
+    print(f'The plot is saved to "{f_path}".')
 
 if __name__ == "__main__":
     main()

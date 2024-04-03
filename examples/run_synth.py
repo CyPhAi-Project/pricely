@@ -1,8 +1,10 @@
+from datetime import date
 from dreal import Variable  # type: ignore
 import numpy as np
 
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
 from pricely.cegus_lyapunov import cegus_lyapunov
@@ -10,6 +12,10 @@ from pricely.gen_cover import gen_init_cover
 from pricely.learner_cvxpy import QuadraticLearner
 from pricely.utils import check_lyapunov_roi, check_lyapunov_sublevel_set
 from pricely.verifier_dreal import SMTVerifier, pretty_sub
+
+
+OUT_DIR = Path(f"out/{str(date.today())}")
+OUT_DIR.mkdir(exist_ok=True)
 
 
 def main(max_epochs: int=15):
@@ -109,10 +115,11 @@ def main(max_epochs: int=15):
 
     plt.gca().set_aspect("equal")
     plt.tight_layout()
-    f_name = f"out/{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
-    plt.savefig(f_name)
+    f_name = f"cegus-{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
+    f_path = OUT_DIR / f_name
+    plt.savefig(f_path)
     plt.clf()
-    print(f'The plot is saved to "{f_name}".')
+    print(f'The plot is saved to "{f_path}".')
 
 
 if __name__ == "__main__":
