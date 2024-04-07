@@ -45,7 +45,7 @@ def ctrl(x: np.ndarray) -> np.ndarray:
         -23.28632*theta
         -5.27055*omega).reshape(len(x),)
 
-def f_dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
+def dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
     theta, omega = x[:, 0], x[:, 1]
 
     dxdt = np.zeros_like(x)
@@ -55,7 +55,7 @@ def f_dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
 
 def f_bbox(x: np.ndarray) -> np.ndarray:
     assert x.shape[1] == X_DIM
-    return f_dyn(x, ctrl(x))
+    return dyn(x, ctrl(x))
 
 
 def f_expr(x_vars: Sequence[Variable]) -> Sequence[Expr]:

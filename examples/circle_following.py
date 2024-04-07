@@ -27,7 +27,7 @@ def ctrl(x: np.ndarray) -> np.ndarray:
         - 4.03426*theta_e
         + 0.19740).reshape(len(x), 1)
 
-def f_dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
+def dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
     d_e, theta_e = x[:, 0], x[:, 1]
     w = u[:, 0]
     dxdt = np.zeros_like(x)
@@ -37,7 +37,7 @@ def f_dyn(x: np.ndarray, u: np.ndarray) -> np.ndarray:
 
 def f_bbox(x: np.ndarray) -> np.ndarray:
     assert x.shape[1] == X_DIM
-    return f_dyn(x, ctrl(x))
+    return dyn(x, ctrl(x))
 
 
 def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
