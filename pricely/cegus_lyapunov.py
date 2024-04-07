@@ -1,5 +1,5 @@
 import abc
-from dreal import Expression as Expr, CheckSatisfiability, Variable  # type: ignore
+from dreal import Expression as Expr, Variable  # type: ignore
 import itertools
 from joblib import Parallel, delayed
 import numpy as np
@@ -61,11 +61,13 @@ class PLyapunovLearner(Protocol):
 
 
 class PLyapunovVerifier(Protocol):
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def x_dim(self) -> int:
         raise NotImplementedError
     
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def u_dim(self) -> int:
         raise NotImplementedError
 
@@ -88,7 +90,8 @@ def cegus_lyapunov(
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
-        max_iter_learn: int = 10):
+        max_iter_learn: int = 10,
+        max_num_samples: int = 5*10**5):
     null_arr = np.array([])
     def new_f_bbox(x, u):
         return f_bbox(x)
@@ -97,26 +100,23 @@ def cegus_lyapunov(
         learner=learner,
         verifier=verifier,
         x_regions=x_regions,
-        u_values=null_arr.reshape(len(x_regions), 0),
         f_bbox=new_f_bbox, lip_bbox=lip_bbox,
-        max_epochs=max_epochs, max_iter_learn=max_iter_learn
-    )
+        max_epochs=max_epochs, max_iter_learn=max_iter_learn,
+        max_num_samples=max_num_samples)
 
 
 def cegus_lyapunov_control(
         learner: PLyapunovLearner,
         verifier: PLyapunovVerifier,
         x_regions: NDArrayFloat,
-        u_values: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5):
     assert x_regions.shape[1] == 3
-    assert len(x_regions) == len(u_values)
     assert max_epochs > 0
-    # Initial sampled x, u values and the constructed set cover
+    # Initial sampled x values and the constructed set cover
     x_values = x_regions[:, 0]
 
     outer_pbar = tqdm(
@@ -125,10 +125,11 @@ def cegus_lyapunov_control(
     cex_regions = []
     obj_values = []
     for epoch in outer_pbar:
+        u_values = learner.ctrl_values(x_values)
         dxdt_values = f_bbox(x_values, u_values)
 
         objs = learner.fit_loop(x_values, dxdt_values,
-                               max_epochs=max_iter_learn, copy=False)
+                                max_epochs=max_iter_learn, copy=False)
         obj_values.extend(objs)
 
         # Verify Lyapunov condition
@@ -159,14 +160,13 @@ def cegus_lyapunov_control(
         x_regions = split_regions(x_regions, cex_regions)
 
         x_values = x_regions[:, 0]
-        u_values = learner.ctrl_values(x_values)
     outer_pbar.close()
 
     tqdm.write(f"Cannot find a Lyapunov function in {max_epochs} iterations.")
     return max_epochs, x_regions, cex_regions
 
 
-def cegar_verify_lyapunov(
+def verify_lyapunov(
         learner: PLyapunovLearner,
         x_roi: NDArrayFloat,
         abs_x_lb: ArrayLike,
@@ -175,19 +175,42 @@ def cegar_verify_lyapunov(
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_num_samples: int = 10**7):
+    def new_f_bbox(x, u):
+        return f_bbox(x)
+
+    return verify_lyapunov_control(
+        learner=learner,
+        x_roi=x_roi,
+        abs_x_lb=abs_x_lb,
+        init_x_regions=init_x_regions,
+        f_bbox=new_f_bbox, lip_bbox=lip_bbox,
+        max_epochs=max_epochs,
+        max_num_samples=max_num_samples)
+
+
+def verify_lyapunov_control(
+        learner: PLyapunovLearner,
+        x_roi: NDArrayFloat,
+        abs_x_lb: ArrayLike,
+        init_x_regions: NDArrayFloat,
+        f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        max_epochs: int = 10,
+        max_num_samples: int = 10**7):
     assert init_x_regions.shape[1] == 3
     assert max_epochs > 0
-    # Initial sampled x, u values and the constructed set cover
+    x_dim = x_roi.shape[1]
+    # Initial sampled x values and the constructed set cover
     x_regions = init_x_regions
-    x_dim = init_x_regions.shape[2]
 
     def parallelizable_verify(
             x_region_j: Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat],
             u_j: NDArrayFloat,
             dxdt_j: NDArrayFloat,
             lip_ub: float):
+        u_j = np.atleast_1d(u_j)
         from pricely.verifier_dreal import SMTVerifier
-        verifier = SMTVerifier(x_roi=x_roi, abs_x_lb=abs_x_lb)
+        verifier = SMTVerifier(x_roi=x_roi, u_dim=len(u_j), abs_x_lb=abs_x_lb)
         verifier.set_lyapunov_candidate(learner)
         return verifier.find_cex(
             x_region_j=x_region_j,
@@ -202,7 +225,8 @@ def cegar_verify_lyapunov(
     cex_regions = []
     for epoch in outer_pbar:
         x_values = x_regions[:, 0]
-        dxdt_values = f_bbox(x_values)
+        u_values = learner.ctrl_values(x_values)
+        dxdt_values = f_bbox(x_values, u_values)
         # Verify Lyapunov condition
         assert len(x_regions) == len(dxdt_values)
 
@@ -213,7 +237,7 @@ def cegar_verify_lyapunov(
             Parallel(n_jobs=16, return_as="generator", prefer="processes")(
             delayed(parallelizable_verify)(
                     x_region_j=x_regions[j],
-                    u_j=np.array([]),
+                    u_j=u_values[j],
                     dxdt_j=dxdt_values[j],
                     lip_ub=lip_ubs[j]) for j in range(len(x_regions)))),
             desc=f"Verify at {epoch}", 

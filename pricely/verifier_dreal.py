@@ -30,11 +30,10 @@ class SMTVerifier(PLyapunovVerifier):
     def __init__(
             self,
             x_roi: NDArrayFloat,
-            u_roi: Optional[NDArrayFloat] = None,
+            u_dim: int = 0,
             abs_x_lb: ArrayLike = 2**-6,
             config: Config = None) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
-        assert u_roi is None or u_roi.shape[0] == 2
         assert np.all(np.asfarray(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
 
         self._x_roi = x_roi
@@ -56,7 +55,6 @@ class SMTVerifier(PLyapunovVerifier):
             ) for i in range(x_dim)
         ]
 
-        u_dim = u_roi.shape[1] if u_roi is not None else 0
         self._all_inputs = [
             DRealInputs(
                 u=Variable(f"u{pretty_sub(i)}"),
@@ -119,6 +117,7 @@ class SMTVerifier(PLyapunovVerifier):
         assert self._lya_cand_expr is not None \
             and all(e is not None for e in self._der_lya_cand_exprs)
         x_j, x_lb_j, x_ub_j = x_region_j
+        u_j = np.atleast_1d(u_j)
         assert len(x_j) == self.x_dim
         assert len(x_lb_j) == self.x_dim
         assert len(x_ub_j) == self.x_dim

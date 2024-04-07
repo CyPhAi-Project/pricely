@@ -6,9 +6,8 @@ from pathlib import Path
 from plot_utils_2d import CatchTime, plot_cegar_result, validate_lip_bbox
 
 from pricely.gen_cover import gen_init_cover
-from pricely.cegus_lyapunov import cegar_verify_lyapunov
+from pricely.cegus_lyapunov import verify_lyapunov
 from pricely.learner_mock import MockQuadraticLearner
-from pricely.verifier_dreal import SMTVerifier
 
 
 OUT_DIR = Path(f"out/{str(date.today())}")
@@ -50,7 +49,7 @@ def main(max_epochs: int=200):
         mock_learner = MockQuadraticLearner(mod.KNOWN_QUAD_LYA)
         # Set predefined Lyapunov candidate
         last_epoch, num_regions, cex_regions = \
-            cegar_verify_lyapunov(
+            verify_lyapunov(
                 mock_learner,
                 mod.X_ROI,
                 mod.ABS_X_LB,
