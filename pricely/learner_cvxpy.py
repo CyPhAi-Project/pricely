@@ -16,7 +16,7 @@ class QuadraticLearner(PLyapunovLearner):
         self._tol = tol
         self._pd_mat = cp.Variable((x_dim, x_dim), name="P", PSD=True)
 
-    def fit_loop(self, x: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
+    def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
         # constraints from samples
         yP = y @ self._pd_mat
         yPx = cp.sum(cp.multiply(yP, x), axis=1)
@@ -83,7 +83,7 @@ class SOS1Learner(PLyapunovLearner):
         self._tol = tol
         self._pd_mat = cp.Variable((x_dim + 1, x_dim + 1), name="P", PSD=True)
 
-    def fit_loop(self, x: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
+    def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
         # constraints from samples
         yP = y @ self._pd_mat[1:, 1:]
         yPx = cp.sum(cp.multiply(yP, x), axis=1)

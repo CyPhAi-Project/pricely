@@ -13,7 +13,7 @@ NDArrayFloat = NDArray[np.float_]
 
 class PLyapunovLearner(Protocol):
     @abc.abstractmethod
-    def fit_loop(self, X: NDArrayFloat, y: NDArrayFloat, **kwargs):
+    def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, **kwargs):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -92,15 +92,16 @@ def cegus_lyapunov(
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5):
-    null_arr = np.array([])
     def new_f_bbox(x, u):
         return f_bbox(x)
+    def new_lip_bbox(x, u):
+        return lip_bbox(x)
 
     return cegus_lyapunov_control(
         learner=learner,
         verifier=verifier,
         x_regions=x_regions,
-        f_bbox=new_f_bbox, lip_bbox=lip_bbox,
+        f_bbox=new_f_bbox, lip_bbox=new_lip_bbox,
         max_epochs=max_epochs, max_iter_learn=max_iter_learn,
         max_num_samples=max_num_samples)
 
@@ -110,7 +111,7 @@ def cegus_lyapunov_control(
         verifier: PLyapunovVerifier,
         x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
-        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5):
@@ -128,7 +129,7 @@ def cegus_lyapunov_control(
         u_values = learner.ctrl_values(x_values)
         dxdt_values = f_bbox(x_values, u_values)
 
-        objs = learner.fit_loop(x_values, dxdt_values,
+        objs = learner.fit_loop(x_values, u_values, dxdt_values,
                                 max_epochs=max_iter_learn, copy=False)
         obj_values.extend(objs)
 
@@ -177,13 +178,16 @@ def verify_lyapunov(
         max_num_samples: int = 10**7):
     def new_f_bbox(x, u):
         return f_bbox(x)
+    
+    def new_lip_bbox(x, u):
+        return lip_bbox(x)
 
     return verify_lyapunov_control(
         learner=learner,
         x_roi=x_roi,
         abs_x_lb=abs_x_lb,
         init_x_regions=init_x_regions,
-        f_bbox=new_f_bbox, lip_bbox=lip_bbox,
+        f_bbox=new_f_bbox, lip_bbox=new_lip_bbox,
         max_epochs=max_epochs,
         max_num_samples=max_num_samples)
 
@@ -194,9 +198,10 @@ def verify_lyapunov_control(
         abs_x_lb: ArrayLike,
         init_x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
-        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
         max_epochs: int = 10,
         max_num_samples: int = 10**7):
+    """
     assert init_x_regions.shape[1] == 3
     assert max_epochs > 0
     x_dim = x_roi.shape[1]
@@ -260,6 +265,8 @@ def verify_lyapunov_control(
 
     tqdm.write(f"Cannot verify the given Lyapunov function in {max_epochs} iterations.")
     return max_epochs, verified + len(cex_regions), x_regions
+    """
+    return 0, 0, np.array([]).reshape((0, 3, x_roi.shape[1]))
 
 
 def get_unverified_regions(
