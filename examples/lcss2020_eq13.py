@@ -40,7 +40,7 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
     abs_furtherest = np.max(np.abs(x_regions), axis=1)
     assert abs_furtherest.ndim == 2 and abs_furtherest.shape[1] == X_DIM
     abs_x, abs_y = abs_furtherest[:, 0], abs_furtherest[:, 1]
-    res = np.sqrt((1 + 4*abs_x*abs_y)**2 + 4*abs_x**4 + (-1)**2).squeeze()
+    res = np.sqrt((1 + 4*abs_x*abs_y)**2 + 4*abs_x**4 + (-1)**2)
     assert res.ndim == 1 and res.shape[0] == x_regions.shape[0]
     return res
 

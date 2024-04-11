@@ -7,10 +7,12 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
+from pricely.approx.boxes import AxisAlignedBoxes
+from pricely.approx.simplices import SimplicialComplex
 from pricely.cegus_lyapunov import cegus_lyapunov
 from pricely.gen_cover import gen_init_cover
 from pricely.learner_cvxpy import QuadraticLearner
-from pricely.utils import check_lyapunov_roi, check_lyapunov_sublevel_set
+from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set, gen_equispace_regions
 from pricely.verifier_dreal import SMTVerifier, pretty_sub
 
 
@@ -24,6 +26,7 @@ def main(max_epochs: int=15):
     # import lcss2020_eq13 as mod
     import path_following_stanley as mod
     # import van_der_pol as mod
+    # import inverted_pendulum as mod
 
     timer = CatchTime()
 
@@ -34,22 +37,36 @@ def main(max_epochs: int=15):
 
     print(" Generate initial samples and cover ".center(80, "="))
     with timer:
-        x_regions = gen_init_cover(
-            abs_roi_ub=mod.X_ROI[1],
-            f_bbox=mod.f_bbox,
-            lip_bbox=mod.calc_lip_bbox,
-            lip_cap=getattr(mod, "LIP_CAP", np.inf),
-            abs_lb=mod.ABS_X_LB,
-            init_part=init_part)
+        if False:
+            x_regions = gen_equispace_regions(init_part, mod.X_ROI)
+            approx = AxisAlignedBoxes(
+                x_roi=mod.X_ROI,
+                u_roi=getattr(mod, "U_ROI", np.empty((2, 0))),
+                x_regions=x_regions,
+                u_values=np.empty((len(x_regions), 0)),
+                f_bbox=lambda x, u: mod.f_bbox(x),  # TODO: support systems with and without input
+                lip_bbox=lambda x, u: mod.calc_lip_bbox(x))  # TODO: support systems with and without input
+        else:
+            axis_cuts = [
+                np.linspace(start=bnd[0], stop=bnd[1], num=cuts+1)
+                for bnd, cuts in zip(mod.X_ROI.T, init_part)
+            ]
+            x_values = cartesian_prod(*axis_cuts)
+            approx = SimplicialComplex(
+                x_roi=mod.X_ROI,
+                u_roi=getattr(mod, "U_ROI", np.empty((2, 0))),
+                x_values=x_values,
+                u_values=np.empty((len(x_values), 0)),
+                f_bbox=lambda x, u: mod.f_bbox(x),  # TODO: support systems with and without input
+                lip_bbox=lambda x, u: mod.calc_lip_bbox(x))  # TODO: support systems with and without input
 
     print(" Run CEGuS ".center(80, "="))
     with timer:
         learner = QuadraticLearner(mod.X_DIM)
         verifier = SMTVerifier(x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB)
-        last_epoch, last_x_regions, cex_regions = \
+        last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
-                learner, verifier, x_regions,
-                mod.f_bbox, mod.calc_lip_bbox,
+                learner, verifier, approx,
                 max_epochs=max_epochs, max_iter_learn=1)
         level_ub, abs_x_ub = verifier._lya_cand_level_ub, verifier._abs_x_ub
     cegus_status = "Found" if not cex_regions else "Can't Find" if last_epoch < max_epochs else "Reach epoch limit"
@@ -100,10 +117,10 @@ def main(max_epochs: int=15):
         f"Is True Lyapunov: {str(validation)}. "
         f"BOA covers ROI: {str(cover_roi)}. \n"
         f"# epoch: {last_epoch}. "
-        f"# total samples: {len(last_x_regions)}. "
+        f"# total samples: {len(last_approx.x_values)}. "
         f"Time: {cegus_time_usage:.3f}s")
     add_valid_regions(
-        plt.gca(), last_epoch, last_x_regions, cex_regions)
+        plt.gca(), last_approx, cex_regions)
     plt.gca().add_patch(Rectangle(
         (-mod.ABS_X_LB, -mod.ABS_X_LB), 2*mod.ABS_X_LB, 2*mod.ABS_X_LB, color='b', fill=False))
     plt.gca().add_patch(Rectangle(
@@ -111,7 +128,7 @@ def main(max_epochs: int=15):
     plt.gca().add_patch(Rectangle(
         (mod.X_ROI[0][0], mod.X_ROI[0][1]), mod.X_ROI[1][0]-mod.X_ROI[0][0], mod.X_ROI[1][1]-mod.X_ROI[0][1], color='r', fill=False))
 
-    add_level_sets(plt.gca(), learner.lya_values, level_ub=level_ub)
+    # add_level_sets(plt.gca(), learner.lya_values, level_ub=level_ub)
 
     plt.gca().set_aspect("equal")
     plt.tight_layout()

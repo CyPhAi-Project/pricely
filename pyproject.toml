@@ -20,7 +20,9 @@ classifiers = [
 dependencies = [
     'cvxpy',
     'dreal',
+    'joblib',
     'numpy',
+    'scipy',
     'tqdm'
 ]
 

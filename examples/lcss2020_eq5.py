@@ -39,8 +39,8 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
     assert x_regions.ndim == 3
     assert x_regions.shape[1] == 3 and x_regions.shape[2] == X_DIM
     recentered = x_regions - np.asfarray([0.0, 1.0])
-    abs_furtherest = np.max(np.abs(recentered), axis=1, keepdims=True)
-    res = np.sqrt(np.sum(abs_furtherest**2, axis=2) + (-1)**2).squeeze()
+    abs_furtherest = np.max(np.abs(recentered), axis=1)
+    res = np.sqrt(np.sum(abs_furtherest**2, axis=1) + (-1)**2)
     assert res.ndim == 1 and res.shape[0] == x_regions.shape[0]
     return res
 

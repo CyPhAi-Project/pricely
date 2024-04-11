@@ -1,9 +1,9 @@
-from dreal import CheckSatisfiability, Config, Expression as Expr, Max, sqrt as Sqrt, Variable, logical_and, logical_or  # type: ignore
+from dreal import CheckSatisfiability, Config, Expression as Expr, sqrt as Sqrt, Variable, logical_and, logical_or, logical_iff  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import NamedTuple, Optional, Tuple, Union
+from typing import NamedTuple, Optional
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner, PLyapunovVerifier
+from pricely.cegus_lyapunov import NDArrayFloat, PLocalApprox, PLyapunovLearner, PLyapunovVerifier
 
 
 def pretty_sub(i: int) -> str:
@@ -14,16 +14,12 @@ def pretty_sub(i: int) -> str:
 class DRealVars(NamedTuple):
     x: Variable
     der_lya: Variable
-    lb: Variable
-    ub: Variable
     abs_ub: Variable
-    x_s: Variable
     dxdt_s: Variable
 
 
 class DRealInputs(NamedTuple):
     u: Variable
-    u_s: Variable
 
 
 class SMTVerifier(PLyapunovVerifier):
@@ -42,23 +38,20 @@ class SMTVerifier(PLyapunovVerifier):
         self._lya_var = Variable("V")
         self._decay_var = Variable("λ")
         self._lya_level_var = Variable("c")
-        self._lip_var = Variable("Lip")
+        self._err_bnd_fun = Variable("ε(x,u)")
+        self._in_reg_bit = Variable("x∈Rj", Variable.Binary)
         self._all_vars = [
             DRealVars(
                 x=Variable(f"x{pretty_sub(i)}"),
                 der_lya=Variable(f"∂V/∂x{pretty_sub(i)}"),
-                lb=Variable(f"x̲{pretty_sub(i)}"),
-                ub=Variable(f"x̄{pretty_sub(i)}"),
                 abs_ub=Variable(f"b{pretty_sub(i)}"),
-                x_s=Variable(f"x̃{pretty_sub(i)}"),
-                dxdt_s=Variable(f"f{pretty_sub(i)}(x̃,ũ)")
+                dxdt_s=Variable(f"ŷ{pretty_sub(i)}(x,u)")
             ) for i in range(x_dim)
         ]
 
         self._all_inputs = [
             DRealInputs(
                 u=Variable(f"u{pretty_sub(i)}"),
-                u_s=Variable(f"ũ{pretty_sub(i)}")
             ) for i in range(u_dim)
         ]
 
@@ -109,46 +102,14 @@ class SMTVerifier(PLyapunovVerifier):
 
     def find_cex(
         self,
-        x_region_j: Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat],
-        u_j: NDArrayFloat,
-        dxdt_j: NDArrayFloat,
-        lip_expr: Union[float, Expr]
+        f_approx_j: PLocalApprox
     ) -> Optional[NDArrayFloat]:
         assert self._lya_cand_expr is not None \
             and all(e is not None for e in self._der_lya_cand_exprs)
-        x_j, x_lb_j, x_ub_j = x_region_j
-        u_j = np.atleast_1d(u_j)
-        assert len(x_j) == self.x_dim
-        assert len(x_lb_j) == self.x_dim
-        assert len(x_ub_j) == self.x_dim
-        assert len(u_j) == self.u_dim
 
-        if np.isscalar(lip_expr):
-            lip_expr = Expr(lip_expr)
+        verif_conds = self._inst_verif_conds(f_approx_j)
 
-        sub_pairs = \
-            [(self._lya_var, self._lya_cand_expr)] + \
-            [(self._decay_var, self._decay_expr)] + \
-            [(self._lya_level_var, Expr(self._lya_cand_level_ub))] + \
-            [(self._lip_var, lip_expr)] + \
-            [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
-            [(xi.lb, Expr(vi)) for xi, vi in zip(self._all_vars, x_lb_j)] + \
-            [(xi.ub, Expr(vi)) for xi, vi in zip(self._all_vars, x_ub_j)] + \
-            [(xi.x_s, Expr(vi)) for xi, vi in zip(self._all_vars, x_j)] + \
-            [(xi.dxdt_s, Expr(vi)) for xi, vi in zip(self._all_vars, dxdt_j)] + \
-            [(ui.u, ei) for ui, ei in zip(self._all_inputs, self._ctrl_exprs)] + \
-            [(ui.u_s, Expr(vi)) for ui, vi in zip(self._all_inputs, u_j)]
-        
-        if np.isscalar(self._abs_x_ub):
-            sub_pairs.extend((xi.abs_ub, Expr(self._abs_x_ub)) for xi in self._all_vars)
-        else:
-            abs_x_ub = np.asfarray(self._abs_x_ub)
-            assert len(abs_x_ub) == len(self._all_vars)
-            sub_pairs.extend((xi.abs_ub, Expr(ub)) for xi, ub in zip(self._all_vars, abs_x_ub))
-
-        sub_dict = dict(sub_pairs)
-
-        smt_query = logical_or(*(query_tpl.Substitute(sub_dict) for query_tpl in self._smt_tpls))
+        smt_query = logical_or(*verif_conds)
         result = CheckSatisfiability(smt_query, self._config)
         if not result:
             return None
@@ -159,12 +120,7 @@ class SMTVerifier(PLyapunovVerifier):
             return box_np
             
 
-    def _init_lyapunov_template(
-            self,
-            abs_x_lb: ArrayLike,
-            use_l1: bool = False,
-            use_l2: bool = True
-        ):
+    def _init_lyapunov_template(self, abs_x_lb: ArrayLike):
         x_vars = [var.x for var in self._all_vars]
         der_lya_vars = [var.der_lya for var in self._all_vars]
 
@@ -182,48 +138,85 @@ class SMTVerifier(PLyapunovVerifier):
             *abs_x_ub_conds,
             sublevel_set_cond)
 
-        in_nbr_pred = logical_and(
-            *(logical_and(var.x >= var.lb, var.x <= var.ub)
-              for var in self._all_vars))
+        lie_der_lya_hat = sum(var.der_lya*var.dxdt_s for var in self._all_vars)
 
-        lie_der_lya = sum(var.der_lya*var.dxdt_s
-                          for var in self._all_vars)
+        # Cauchy-Schwarz inequality for L2-norm
+        der_lya_l2 = Sqrt(sum(e*e for e in der_lya_vars))
+        # |∂V/∂x|ε(x,k(x)) + ∂V/∂x⋅ŷ(x,k(x)) + λV(x)
+        lie_der_lya_ub = der_lya_l2*self._err_bnd_fun + lie_der_lya_hat + self._decay_var*self._lya_var
 
-        neg_trig_cond_list = []
-        if use_l1:  #  Hölder's inequality for L1, Linf norms
-            der_lya_l1 = sum(abs(e) for e in der_lya_vars)
-            dist_linf = \
-                Max(Max(*(abs(var.x-var.x_s) for var in self._all_vars)),
-                          0.0) # Max(*(abs(var.u-var.u_s) for var in self._all_inputs)))
-            neg_trig_cond_l1 = (der_lya_l1*dist_linf*self._lip_var + lie_der_lya >= 0.0)
-            neg_trig_cond_list.append(neg_trig_cond_l1)
-
-        if use_l2:  # Cauchy-Schwarz inequality
-            der_lya_l2 = Sqrt(sum(e*e for e in der_lya_vars))
-            dist = Sqrt(
-                sum((var.x-var.x_s)**2 for var in self._all_vars) +
-                sum((var.u-var.u_s)**2 for var in self._all_inputs))
-            # (|∂V/∂x||(x-x̃,u-ũ)|Lip) + ∂V/∂x⋅f(x̃,ũ) + λV(x) >= 0.0
-            neg_trig_cond_l2 = der_lya_l2*dist*self._lip_var + lie_der_lya + self._decay_var*self._lya_var >= 0.0
-            neg_trig_cond_list.append(neg_trig_cond_l2)
-
-        neg_trig_cond = logical_and(*neg_trig_cond_list)
-        # Validity Cond: forall x in [lb, ub].
-        #   V(x) > 0 /\ ∂V/∂x⋅f(x̃,ũ) < 0 /\ (|∂V/∂x||(x-x̃,u-ũ)|Lip + ∂V/∂x⋅f(x̃,ũ) < -λV(x)
-        # SMT Cond: exists x in [lb, ub].
-        #   V(x)<= 0 \/ ∂V/∂x⋅f(x̃,ũ)>= 0 \/ |∂V/∂x||(x-x̃,u-ũ)|Lip + ∂V/∂x⋅f(x̃,ũ) + λV(x) >= 0
+        # Validity Conds: forall x in Rj.
+        #   V(x) > 0 /\ ∂V/∂x⋅ŷ(x,k(x)) < 0 /\ |∂V/∂x|ε(x,k(x)) + ∂V/∂x⋅ŷ(x,k(x)) < -λV(x)
+        # SMT Conds: exists x in Rj.
+        #   V(x)<= 0 \/ ∂V/∂x⋅ŷ(x,k(x))>= 0 \/ |∂V/∂x|ε(x,k(x)) + ∂V/∂x⋅ŷ(x,k(x)) + λV(x) >= 0
         return [
-            logical_and(in_omega_pred, in_nbr_pred, cond)
-            for cond in [self._lya_var <= 0, lie_der_lya >= 0, neg_trig_cond]]
+            logical_and(in_omega_pred, self._in_reg_bit == 1, cond)
+            for cond in [self._lya_var <= 0, lie_der_lya_hat >= 0, lie_der_lya_ub >= 0]]
+    
+    def _inst_verif_conds(self, f_approx_j: PLocalApprox):
+        x_vars = [xi.x for xi in self._all_vars]
+        u_vars = [ui.u for ui in self._all_inputs]
+        set_domain = logical_iff(self._in_reg_bit == 1, f_approx_j.in_domain_pred(x_vars))
+        tmp_tpls = (logical_and(set_domain, query_tpl) for query_tpl in self._smt_tpls)
+
+        sub_pairs = \
+            [(self._in_reg_bit, 1),
+             (self._lya_var, self._lya_cand_expr),
+             (self._decay_var, self._decay_expr),
+             (self._err_bnd_fun, f_approx_j.error_bound_expr(x_vars, u_vars)),
+             (self._lya_level_var, Expr(self._lya_cand_level_ub))] + \
+            [(xi.der_lya, ei) for xi, ei in zip(self._all_vars, self._der_lya_cand_exprs)] + \
+            [(xi.dxdt_s, fi) for xi, fi in zip(self._all_vars, f_approx_j.func_exprs(x_vars, u_vars))] + \
+            [(ui.u, ei) for ui, ei in zip(self._all_inputs, self._ctrl_exprs)]
+
+        if np.isscalar(self._abs_x_ub):
+            sub_pairs.extend((xi.abs_ub, Expr(self._abs_x_ub)) for xi in self._all_vars)
+        else:
+            abs_x_ub = np.asfarray(self._abs_x_ub)
+            assert len(abs_x_ub) == len(self._all_vars)
+            sub_pairs.extend((xi.abs_ub, Expr(ub)) for xi, ub in zip(self._all_vars, abs_x_ub))
+
+        sub_dict = dict(sub_pairs)
+        if hasattr(f_approx_j, "_sel_var"):
+            verif_conds = (query_tpl.Substitute(sub_dict) for query_tpl in tmp_tpls)
+            return [
+                logical_and(*(vc.Substitute({f_approx_j._sel_var: Expr(k)}) for k in range(self.x_dim + 1)))  #type:ignore
+                for vc in verif_conds]
+        return [query_tpl.Substitute(sub_dict) for query_tpl in tmp_tpls]
+
 
 def test_smt_verifier():
     X_ROI = np.asfarray([
         [-1, -2, -3],
         [+1, +2, +3]
     ])
-    verifier = SMTVerifier(X_ROI, abs_x_lb=2**-4)
+    verifier = SMTVerifier(X_ROI, u_dim=2, abs_x_lb=2**-4)
     print(*verifier._smt_tpls, sep="\n")
+
+
+def test_substitution():
+    from pricely.learner_mock import MockQuadraticLearner
+    from pricely.approx.boxes import ConstantApprox
+    X_ROI = np.asfarray([
+        [-1, -2, -3],
+        [+1, +2, +3]
+    ])
+    X_DIM = X_ROI.shape[1]
+    U_DIM = 2
+
+    pd_mat = np.eye(X_DIM)
+    ctrl_mat = np.eye(U_DIM, X_DIM)
+    learner = MockQuadraticLearner(pd_mat=pd_mat, ctrl_mat=ctrl_mat)
+
+    verifier = SMTVerifier(X_ROI, u_dim=U_DIM, abs_x_lb=2**-4)
+    verifier.set_lyapunov_candidate(learner)
+
+    region = np.row_stack((np.zeros(X_DIM), X_ROI)).reshape((3, X_DIM))
+    approx = ConstantApprox(region, ctrl_mat @ region[0], region[0], 1.0)
+    verif_conds = verifier._inst_verif_conds(approx)
+    print(*verif_conds, sep='\n')
 
 
 if __name__ == "__main__":
     test_smt_verifier()
+    test_substitution()

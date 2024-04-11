@@ -2,10 +2,14 @@ from joblib import Parallel, delayed
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
 import numpy as np
+from scipy.spatial import Delaunay
 import time
 from tqdm import tqdm
 from typing import Callable, Sequence
 
+from pricely.approx.boxes import AxisAlignedBoxes
+from pricely.approx.simplices import SimplicialComplex
+from pricely.cegus_lyapunov import PApproxDynamic
 from pricely.utils import gen_equispace_regions, gen_lip_bbox
 
 
@@ -33,22 +37,37 @@ def add_level_sets(
     ax.contour(X, Y, Z, levels, colors=colors)
 
 
-def add_valid_regions(ax: Axes, num_iters: int, regions: np.ndarray, cex_regions):
+def add_valid_regions(ax: Axes, approx: PApproxDynamic, cex_regions):
+    if isinstance(approx, AxisAlignedBoxes):
+        _add_axis_aligned_boxes(ax, approx.x_regions, cex_regions)
+    elif isinstance(approx, SimplicialComplex):
+        _add_simplicial_complex(ax, approx._triangulation, cex_regions)
+    else:
+        raise NotImplementedError
+
+
+def _add_simplicial_complex(ax: Axes, tri: Delaunay, cex_regions):
+    mask = np.zeros(len(tri.simplices), dtype=bool)
+    unverified = [j for j, _ in cex_regions]
+    mask[unverified] = True
+    ax.tripcolor(tri.points[:,0], tri.points[:,1], triangles=tri.simplices, mask=mask, facecolors=np.ones(len(tri.simplices)), cmap="Accent")
+    ax.triplot(tri.points[:,0], tri.points[:,1], triangles=tri.simplices, lw=0.5, alpha=0.7)
+
+
+def _add_axis_aligned_boxes(ax: Axes, regions: np.ndarray, cex_regions):
     # Contain ref value, lower bound, and upper bound
     assert regions.shape[1] == 3
     assert regions.shape[2] == 2   # Only for 2D states
     x_values, x_lbs, x_ubs = \
         regions[:, 0], regions[:, 1], regions[:, 2]
 
-    num_samples = len(x_values)
+    num_regions = len(regions)
     sat_region_iter = (k for k, _ in cex_regions)
     k = next(sat_region_iter, None)
-    for j in range(num_samples):
+    for j in range(num_regions):
         if j == k:
             k = next(sat_region_iter, None)
             facecolor = "white"
-        elif j >= num_samples - len(cex_regions):
-            facecolor = "gray"
         else:
             facecolor = "green"
         w, h = x_ubs[j] - x_lbs[j]
