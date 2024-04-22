@@ -2,7 +2,7 @@ from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_a
 import numpy as np
 from typing import Callable, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner, PApproxDynamic, PLocalApprox, split_region
+from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox, split_region
 from pricely.utils import gen_equispace_regions
 
 
@@ -111,11 +111,11 @@ class AxisAlignedBoxes(PApproxDynamic):
             y=self.y_values[item],
             lip=self._lip_values[item])
 
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], learner: PLyapunovLearner) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
         new_regions = self._split_regions(cex_boxes)
 
         new_x_values = new_regions[:, 0, :]
-        new_u_values = learner.ctrl_values(new_x_values)
+        new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
         new_lip_values = self._lip_bbox(new_regions, self._u_roi)
 

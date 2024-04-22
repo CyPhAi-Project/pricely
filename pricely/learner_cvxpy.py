@@ -1,9 +1,10 @@
 import cvxpy as cp
 from dreal import Expression as Expr, Variable  # type: ignore
 import numpy as np
-from typing import Sequence, Tuple
+from typing import Sequence
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner
+from pricely.candidates import QuadraticLyapunov
+from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PLyapunovLearner
 
 
 class QuadraticLearner(PLyapunovLearner):
@@ -54,33 +55,13 @@ class QuadraticLearner(PLyapunovLearner):
         else:
             raise RuntimeError(f"CVXPY returns status {prob.status}.")
 
-    def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
-        return (x_vars @ self._pd_mat.value @ x_vars) / 2.0
-    
-    def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
-        return np.sum((x_values @ self._pd_mat.value) * x_values, axis=1) / 2.0
-
-    def lya_decay_rate(self) -> float:
-        # Inverse of Spectral Radius
-        eig_max_inv = self._lambda.value / np.abs(np.linalg.eigvalsh(self._pd_mat.value)).max()
-        return eig_max_inv
-
-    def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
+    def get_candidate(self) -> PLyapunovCandidate:
+        assert self._pd_mat.value is not None
+        assert self._lambda.value is not None
         if self._u_dim == 0:
-            return []
+            return QuadraticLyapunov(self._pd_mat.value, decay_rate=self._lambda.value)
         else:
-            raise NotImplementedError
-
-    def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
-        if self._u_dim == 0:
-            return np.array([]).reshape(len(x_values), 0)
-        else:
-            raise NotImplementedError
-
-    def find_sublevel_set_and_box(self, x_roi: NDArrayFloat) -> Tuple[float, NDArrayFloat]:
-        level_ub = self.find_level_ub(x_roi)
-        abs_x_ub = np.sqrt(2*level_ub * np.linalg.inv(self._pd_mat.value).diagonal())
-        return level_ub, abs_x_ub
+            raise NotImplementedError("Learning Lyapunov controller is not supported yet.")
 
 
 class SOS1Learner(PLyapunovLearner):

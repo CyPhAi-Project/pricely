@@ -1,5 +1,5 @@
 from datetime import date
-from dreal import Variable  # type: ignore
+from dreal import Config, Variable  # type: ignore
 import numpy as np
 
 from matplotlib.patches import Rectangle
@@ -60,15 +60,20 @@ def main(max_epochs: int=15):
                 f_bbox=lambda x, u: mod.f_bbox(x),  # TODO: support systems with and without input
                 lip_bbox=lambda x, u: mod.calc_lip_bbox(x))  # TODO: support systems with and without input
 
+    # dReal configurations
+    config = Config()
+    config.use_polytope_in_forall = True
+    config.use_local_optimization = True
+    config.precision = 1e-9
+
     print(" Run CEGuS ".center(80, "="))
     with timer:
         learner = QuadraticLearner(mod.X_DIM)
-        verifier = SMTVerifier(x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB)
+        verifier = SMTVerifier(x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB, config=config)
         last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
                 max_epochs=max_epochs, max_iter_learn=1)
-        level_ub, abs_x_ub = verifier._lya_cand_level_ub, verifier._abs_x_ub
     cegus_status = "Found" if not cex_regions else "Can't Find" if last_epoch < max_epochs else "Reach epoch limit"
     cegus_time_usage = timer.elapsed
 
@@ -76,14 +81,16 @@ def main(max_epochs: int=15):
     with timer:
         x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(mod.X_DIM)]
         dxdt_exprs = mod.f_expr(x_vars)
-        lya_expr = learner.lya_expr(x_vars)
-        lya_decay_rate = learner.lya_decay_rate()
+        cand = learner.get_candidate()
+        lya_expr = cand.lya_expr(x_vars)
+        lya_decay_rate = cand.lya_decay_rate()
+        level_ub, abs_x_ub = cand.find_sublevel_set_and_box(mod.X_ROI)
         print(f"Decay rate of Lyapunov potential: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
             mod.X_ROI,
             lya_decay_rate,
-            mod.ABS_X_LB, config=verifier._config)
+            mod.ABS_X_LB, config=config)
         if result is None:
             print("Learned candidate is a valid Lyapunov function for ROI.")
         else:
@@ -93,7 +100,7 @@ def main(max_epochs: int=15):
 
         result = check_lyapunov_sublevel_set(
             x_vars, dxdt_exprs, lya_expr, lya_decay_rate,
-            level_ub, mod.ABS_X_LB, abs_x_ub, config=verifier._config)
+            level_ub, mod.ABS_X_LB, abs_x_ub, config=config)
         if result is None:
             print("The Basin of Attraction can cover the entire ROI.")
         else:
@@ -128,7 +135,7 @@ def main(max_epochs: int=15):
     plt.gca().add_patch(Rectangle(
         (mod.X_ROI[0][0], mod.X_ROI[0][1]), mod.X_ROI[1][0]-mod.X_ROI[0][0], mod.X_ROI[1][1]-mod.X_ROI[0][1], color='r', fill=False))
 
-    # add_level_sets(plt.gca(), learner.lya_values, level_ub=level_ub)
+    # add_level_sets(plt.gca(), cand.lya_values, level_ub=level_ub)
 
     plt.gca().set_aspect("equal")
     plt.tight_layout()

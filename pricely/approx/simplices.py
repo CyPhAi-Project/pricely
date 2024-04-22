@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial import Delaunay
 from typing import Callable, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovLearner
+from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovCandidate
 
 
 class DatasetApproxBase(PLocalApprox):
@@ -200,12 +200,12 @@ class SimplicialComplex(PApproxDynamic):
             self.y_values[vertex_idxs],
             lip=self._lips[item])
 
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], learner: PLyapunovLearner) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
         cex_regions = np.asfarray([box for j, box in cex_boxes])
         assert cex_regions.shape[1] == 2 and cex_regions.shape[2] == self.x_dim
         new_x_values = cex_regions.mean(axis=1)
         assert np.alltrue(np.isfinite(new_x_values))
-        new_u_values = learner.ctrl_values(new_x_values)
+        new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
 
         # NOTE This assumes SciPy Delaunay class maintains the order of added points.

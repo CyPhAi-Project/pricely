@@ -3,7 +3,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLocalApprox, PLyapunovLearner, PLyapunovVerifier
+from pricely.cegus_lyapunov import NDArrayFloat, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
 
 
 def pretty_sub(i: int) -> str:
@@ -81,7 +81,7 @@ class SMTVerifier(PLyapunovVerifier):
         return len(self._all_inputs)
 
     def set_lyapunov_candidate(
-            self, lya: PLyapunovLearner):
+            self, lya: PLyapunovCandidate):
         x_vars = [xi.x for xi in self._all_vars]
         self._lya_cand_expr = lya.lya_expr(x_vars)
         self._decay_expr = Expr(lya.lya_decay_rate())
@@ -209,7 +209,7 @@ def test_substitution():
     learner = MockQuadraticLearner(pd_mat=pd_mat, ctrl_mat=ctrl_mat)
 
     verifier = SMTVerifier(X_ROI, u_dim=U_DIM, abs_x_lb=2**-4)
-    verifier.set_lyapunov_candidate(learner)
+    verifier.set_lyapunov_candidate(learner.get_candidate())
 
     region = np.row_stack((np.zeros(X_DIM), X_ROI)).reshape((3, X_DIM))
     approx = ConstantApprox(region, ctrl_mat @ region[0], region[0], 1.0)

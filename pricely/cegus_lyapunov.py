@@ -11,11 +11,7 @@ import warnings
 
 NDArrayFloat = NDArray[np.float_]
 
-class PLyapunovLearner(Protocol):
-    @abc.abstractmethod
-    def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, **kwargs):
-        raise NotImplementedError
-
+class PLyapunovCandidate(Protocol):
     @abc.abstractmethod
     def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
         raise NotImplementedError
@@ -58,7 +54,18 @@ class PLyapunovLearner(Protocol):
     @abc.abstractmethod
     def find_sublevel_set_and_box(self, x_roi: NDArrayFloat) -> Tuple[float, ArrayLike]:
         raise NotImplementedError
+
+
+class PLyapunovLearner(Protocol):
+    @abc.abstractmethod
+    def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, **kwargs):
+        raise NotImplementedError
     
+    @abc.abstractmethod
+    def get_candidate(self) -> PLyapunovCandidate:
+        raise NotImplementedError
+
+
 class PLocalApprox(Protocol):
     @abc.abstractmethod
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
@@ -99,7 +106,7 @@ class PApproxDynamic(Sequence[PLocalApprox]):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], learner: PLyapunovLearner) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
         raise NotImplementedError
 
 
@@ -115,7 +122,7 @@ class PLyapunovVerifier(Protocol):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def set_lyapunov_candidate(self, learner: PLyapunovLearner):
+    def set_lyapunov_candidate(self, cand: PLyapunovCandidate):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -149,7 +156,8 @@ def cegus_lyapunov(
         obj_values.extend(objs)
 
         # Verify Lyapunov condition
-        verifier.set_lyapunov_candidate(learner)
+        cand = learner.get_candidate()
+        verifier.set_lyapunov_candidate(cand)
         cex_regions.clear()
         for j in tqdm(range(len(curr_approx)),
                       desc=f"Verify at {epoch}", ascii=True, leave=False):
@@ -169,11 +177,7 @@ def cegus_lyapunov(
             break
         # else:
         # Update the cover with counterexamples
-        try:
-            curr_approx.add(cex_regions, learner)
-        except Exception as e:
-            tqdm.write(f"Exception in generating a new cover at Iteration {epoch}. Return current result.")
-            return epoch, curr_approx, cex_regions
+        curr_approx.add(cex_regions, cand)
 
         # New dataset after adding counterexample states and input from current controller
         x_values = curr_approx.x_values
