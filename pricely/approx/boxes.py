@@ -25,19 +25,32 @@ class ConstantApprox(PLocalApprox):
     @property
     def _ub(self) -> NDArrayFloat:
         return self._x_region[2]
+    
+    @property
+    def num_approxes(self) -> int:
+        return 1
+    
+    @property
+    def x_witness(self) -> NDArrayFloat:
+        dist_ub = np.sum(self._ub - self._x)
+        dist_lb = np.sum(self._x - self._lb)
+        if dist_lb <= dist_ub:
+            return (self._x + self._ub) / 2
+        else:
+            return (self._lb + self._x) / 2
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
             *(logical_and(x >= lb, x <= ub)
             for x, lb, ub in zip(x_vars, self._lb, self._ub)))
 
-    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Expr:
+    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
         # TODO Support control input
         return self._lip * Sqrt(
             sum((x - v)**2 for x, v in zip(x_vars, self._x)) +
             sum((u - v)**2 for u, v in zip(u_vars, self._u)))
 
-    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Sequence[Expr]:
+    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
         return [Expr(v) for v in self._y]  # Constant value approximation
 
 

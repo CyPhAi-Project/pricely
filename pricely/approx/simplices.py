@@ -1,6 +1,7 @@
-from dreal import Expression as Expr, Formula, if_then_else as ITE, sqrt as Sqrt, Variable, logical_and, logical_or  # type: ignore
+from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_and  # type: ignore
 import numpy as np
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, QhullError
+from scipy.spatial.distance import cdist
 from typing import Callable, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovCandidate
@@ -17,6 +18,10 @@ class DatasetApproxBase(PLocalApprox):
         self._u_values = u_values
         self._y_values = y_values
         self._lip = lip
+
+    @property
+    def x_witness(self) -> NDArrayFloat:
+        return self._x_values.mean(axis=0)
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
@@ -54,16 +59,20 @@ class LinearInterpolaton(BarycentricMixin, DatasetApproxBase):
             lip: float) -> None:
         super().__init__(trans_barycentric, x_values, u_values, y_values, lip)
 
+    @property
+    def num_approxes(self) -> int:
+        return 1
+
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
             self.in_simplex_pred(x_vars),
             super().in_domain_pred(x_vars)) 
 
-    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Sequence[Expr]:
+    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
         barycentric_exprs = self._get_barycentric_exprs(x_vars)
         return np.sum(barycentric_exprs * self._y_values.T, axis=0)
 
-    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Expr:
+    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
         barycentric_exprs = self._get_barycentric_exprs(x_vars)
         norm_exprs = [Sqrt(sum((x_vars - xv)**2) + sum((u_vars - uv)**2))
                       for xv, uv in zip(self._x_values, self._u_values)]
@@ -81,26 +90,19 @@ class AnyBoxConstant(DatasetApproxBase):
             lip: float) -> None:
         super().__init__(x_values, u_values, y_values, lip)
 
-        self._sel_var = Variable("k", Variable.Int)
+    @property
+    def num_approxes(self) -> int:
+        return len(self._x_values)
 
-    def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
-        return logical_and(
-            logical_or(*(self._sel_var == k for k in range(len(x_vars) + 1))),
-            super().in_domain_pred(x_vars))
+    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
+        return [Expr(vi) for vi in self._y_values[k]]
 
-    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Sequence[Expr]:
-        return [
-            sum(ITE(self._sel_var == k, vi_k, 0.0) for k, vi_k in enumerate(yi))
-            for yi in self._y_values.T]
-
-    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Expr:
+    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
         def l2norm(var_seq, val_seq) -> Expr:
             return Sqrt(sum((x - v)**2 for x, v in zip(var_seq, val_seq)))
         xu_vars = list(x_vars) + list(u_vars)
-        xu_values = np.column_stack((self._x_values, self._u_values))
-        return self._lip * sum(
-            ITE(self._sel_var == k, l2norm(xu_vars, xu_val), 0.0)
-            for k, xu_val in enumerate(xu_values))
+        xu_values = np.concatenate((self._x_values[k], self._u_values[k]))
+        return self._lip * l2norm(xu_vars, xu_values)
 
 
 class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
@@ -209,7 +211,11 @@ class SimplicialComplex(PApproxDynamic):
         new_y_values = self._f_bbox(new_x_values, new_u_values)
 
         # NOTE This assumes SciPy Delaunay class maintains the order of added points.
-        self._triangulation.add_points(new_x_values)
+        try:
+            self._triangulation.add_points(new_x_values)
+        except QhullError as e:
+            print("Min dist: ", cdist(self._triangulation.points, new_x_values).ravel().min())
+            raise RuntimeError("Exception in triangulation.")
         self._u_values = np.row_stack((self._u_values, new_u_values))
         self._y_values = np.row_stack((self._y_values, new_y_values))
 
@@ -262,8 +268,8 @@ def test_approx():
     print(local_approx._x_values)
     print(local_approx._y_values)
     print(local_approx.in_domain_pred(x_vars))
-    print(local_approx.func_exprs(x_vars, u_vars))
-    print(local_approx.error_bound_expr(x_vars, u_vars))
+    print(local_approx.func_exprs(x_vars, u_vars, 1))
+    print(local_approx.error_bound_expr(x_vars, u_vars, 1))
 
 
 if __name__ == "__main__":

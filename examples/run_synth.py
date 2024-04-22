@@ -64,7 +64,8 @@ def main(max_epochs: int=15):
     config = Config()
     config.use_polytope_in_forall = True
     config.use_local_optimization = True
-    config.precision = 1e-9
+    config.precision = 1e-7
+    config.number_of_jobs = 1
 
     print(" Run CEGuS ".center(80, "="))
     with timer:
@@ -73,7 +74,7 @@ def main(max_epochs: int=15):
         last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
-                max_epochs=max_epochs, max_iter_learn=1)
+                max_epochs=max_epochs, max_iter_learn=1, n_jobs=20)
     cegus_status = "Found" if not cex_regions else "Can't Find" if last_epoch < max_epochs else "Reach epoch limit"
     cegus_time_usage = timer.elapsed
 

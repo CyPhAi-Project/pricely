@@ -1,9 +1,10 @@
 import abc
 from dreal import Expression as Expr, Formula, Variable  # type: ignore
 import itertools
-from joblib import Parallel, delayed
+from multiprocessing import Pool, TimeoutError
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from signal import signal, SIGINT
 from tqdm import tqdm
 from typing import Callable, Optional, Protocol, Sequence, Tuple
 import warnings
@@ -67,16 +68,26 @@ class PLyapunovLearner(Protocol):
 
 
 class PLocalApprox(Protocol):
+    @property
+    @abc.abstractmethod
+    def num_approxes(self) -> int:
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def x_witness(self) -> NDArrayFloat:
+        raise NotImplementedError
+
     @abc.abstractmethod
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Sequence[Expr]:
+    def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable]) -> Expr:
+    def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
         raise NotImplementedError
 
 
@@ -111,16 +122,6 @@ class PApproxDynamic(Sequence[PLocalApprox]):
 
 
 class PLyapunovVerifier(Protocol):
-    @property
-    @abc.abstractmethod
-    def x_dim(self) -> int:
-        raise NotImplementedError
-    
-    @property
-    @abc.abstractmethod
-    def u_dim(self) -> int:
-        raise NotImplementedError
-
     @abc.abstractmethod
     def set_lyapunov_candidate(self, cand: PLyapunovCandidate):
         raise NotImplementedError
@@ -130,13 +131,27 @@ class PLyapunovVerifier(Protocol):
         raise NotImplementedError
 
 
+def handler(signumber, frame):
+    raise RuntimeError("Handle Ctrl+C for child processes")
+
+
+def parallelizable_verify(
+        j: int,
+        verifier: PLyapunovVerifier,
+        f_approx_j: PLocalApprox):
+    signal(SIGINT, handler)
+    return j, verifier.find_cex(f_approx_j)
+
+
 def cegus_lyapunov(
         learner: PLyapunovLearner,
         verifier: PLyapunovVerifier,
         init_approx: PApproxDynamic,
         max_epochs: int = 10,
         max_iter_learn: int = 10,
-        max_num_samples: int = 5*10**5):
+        max_num_samples: int = 5*10**5,
+        n_jobs: int = 1,
+        timeout_per_job: Optional[float] = 30.0):
     assert max_epochs > 0
     # Initial set cover and sampled values
     curr_approx = init_approx
@@ -146,7 +161,10 @@ def cegus_lyapunov(
 
     outer_pbar = tqdm(
         iter(range(1, max_epochs + 1)),
-        desc="Outer", ascii=True, postfix={"#Valid": 0, "#Total": len(curr_approx.x_values)})
+        desc="Outer", ascii=True, postfix={
+            "#Valid Regions": 0, 
+            "#Total Regions": len(curr_approx), 
+            "#Samples": len(curr_approx.x_values)})
     cex_regions = []
     obj_values = []
     for epoch in outer_pbar:
@@ -159,15 +177,33 @@ def cegus_lyapunov(
         cand = learner.get_candidate()
         verifier.set_lyapunov_candidate(cand)
         cex_regions.clear()
-        for j in tqdm(range(len(curr_approx)),
-                      desc=f"Verify at {epoch}", ascii=True, leave=False):
-            # TODO get u and y values that are relavent to this region
-            result = verifier.find_cex(curr_approx[j])
-            if result is not None:
-                cex_regions.append((j, result))
+        num_timeouts = 0
+        with Pool(n_jobs) as p:
+            future_list = [p.apply_async(
+                func=parallelizable_verify,
+                args=((j, verifier, curr_approx[j])))
+                for j in range(len(curr_approx))]
+            for future in tqdm(future_list,
+                               desc=f"Verify at {epoch}it", ascii=True, leave=False):
+                try:
+                    j, box = future.get(timeout_per_job)
+                    if box is not None:
+                        cex_regions.append((j, box))
+                except TimeoutError:
+                    cex = curr_approx[j].x_witness
+                    box = np.row_stack((cex, cex))
+                    cex_regions.append((j, box))
+                    num_timeouts += 1
 
-        outer_pbar.set_postfix({"#Valid Regions": len(curr_approx)-len(cex_regions), "#Total Regions": len(curr_approx)})
+        if num_timeouts > 0:
+            tqdm.write(f'Timeout for {num_timeouts} regions at {epoch}it')
+        outer_pbar.set_postfix({
+            "#Valid Regions": len(curr_approx)-len(cex_regions),
+            "#Total Regions": len(curr_approx),
+            "#Samples": len(curr_approx.x_values)})
         if len(cex_regions) == 0:
+            if num_timeouts != 0:
+                pass  # TODO report timeout regions
             # Lyapunov function candidate passed
             return epoch, curr_approx, cex_regions
         if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
@@ -294,7 +330,8 @@ def verify_lyapunov_control(
 
 def get_unverified_regions(
         x_regions: NDArrayFloat,
-        sat_regions: Sequence[Tuple[int, NDArrayFloat]]) -> NDArrayFloat:
+        sat_regions: Sequence[Tuple[int, NDArrayFloat]],
+        n_jobs: int = 16) -> NDArrayFloat:
     assert x_regions.shape[1] == 3
 
     def parallelizable_split(x_region_j: NDArrayFloat, box_j: NDArrayFloat):
@@ -318,17 +355,17 @@ def get_unverified_regions(
         return np.row_stack((x_j, x_lb_j, x_ub_j)), \
             np.row_stack((cex, cex_lb, cex_ub))
 
-    results = tqdm(Parallel(n_jobs=16, return_as="generator", prefer="processes")(
-        delayed(parallelizable_split)(
-                x_region_j=x_regions[j],
-                box_j=box_j) for j, box_j in sat_regions),
-        desc=f"Split regions",
-        total=len(sat_regions), ascii=True, leave=False
-    )
     new_regions = []
-    for old_region, cex_region in results:  # type: ignore
-        new_regions.append(old_region)
-        new_regions.append(cex_region)
+    with Pool(n_jobs) as p:
+        result_iter = tqdm(
+            p.starmap(parallelizable_split,
+                      ((x_regions[j], box_j) for j, box_j in sat_regions)),
+            desc=f"Validate Lipshitz Constants",
+            total=len(sat_regions), ascii=True, leave=False)
+
+        for old_region, cex_region in result_iter:  # type: ignore
+            new_regions.append(old_region)
+            new_regions.append(cex_region)
     new_regions = np.stack(new_regions, axis=0)
     return np.asfarray(new_regions)
 

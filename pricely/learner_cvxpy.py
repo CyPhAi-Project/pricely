@@ -41,7 +41,7 @@ class QuadraticLearner(PLyapunovLearner):
         # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported by CVXPY
         prob = cp.Problem(obj, constraints)
 
-        for solver in [cp.CVXOPT, cp.CLARABEL]:
+        for solver in [cp.CLARABEL, cp.CVXOPT]:
             try:
                 prob.solve(solver)
                 break  # Early terminate when a solver suceeded

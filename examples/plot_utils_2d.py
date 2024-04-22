@@ -1,6 +1,6 @@
-from joblib import Parallel, delayed
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
+from multiprocessing import Pool
 import numpy as np
 from scipy.spatial import Delaunay
 import time
@@ -111,18 +111,18 @@ class CatchTime:
         print(self._readout)
 
 
-def validate_lip_bbox(mod, parts: Sequence[int]):
+def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
     est_lip_lb = gen_lip_bbox(mod.X_DIM, mod.f_bbox)
 
     regions = gen_equispace_regions(parts, mod.X_ROI)
 
     lip_values = mod.calc_lip_bbox(regions)
-    result_iter = tqdm(
-        Parallel(n_jobs=16, return_as="generator", prefer="processes")(
-            delayed(est_lip_lb)(reg) for reg in regions),
-        desc=f"Validate Lipshitz Constants",
-        total=len(regions), ascii=True)
-    lip_lbs = np.fromiter(result_iter, dtype=float)
+    with Pool(n_jobs) as p:
+        result_iter = tqdm(
+            p.map(est_lip_lb, regions),
+            desc=f"Validate Lipshitz Constants",
+            total=len(regions), ascii=True)
+        lip_lbs = np.fromiter(result_iter, dtype=float)
 
     min_lb_idx = np.argmin(lip_lbs)
     max_lb_idx = np.argmax(lip_lbs)
