@@ -1,5 +1,5 @@
 """
-ODE from Equation (14) in "Formal Synthesis of Lyapunov Neural Networks"
+ODE from Equation (15) in "Formal Synthesis of Lyapunov Neural Networks"
 DOI: 10.1109/LCSYS.2020.3005328
 """
 from dreal import Expression as Expr, Variable  # type: ignore

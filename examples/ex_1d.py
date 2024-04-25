@@ -1,4 +1,6 @@
+from dreal import Expression as Expr, Variable  # type: ignore
 import numpy as np
+from typing import Sequence
 
 X_DIM = 1
 
@@ -14,6 +16,11 @@ K = 0.125
 def f_bbox(x: np.ndarray) -> np.ndarray:
     assert x.shape[1] == X_DIM
     return -K*(2*x**3 - 4*x**2 + 3*x)
+
+
+def f_expr(x_vars: Sequence[Variable]) -> Sequence[Expr]:
+    x = x_vars[0]
+    return [-K*(2*x**3 - 4*x**2 + 3*x)]
 
 
 def calc_lip_bbox(x_regions: np.ndarray, global_lip: bool = False) -> np.ndarray:

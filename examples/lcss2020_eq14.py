@@ -38,7 +38,7 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
         [    -1,        0,  0],
         [0.1y^2, -2+0.2xy,  1],
         [     0,     -1.5, -1]]
-    We further upper bound (-2+0.2xy)^2 with (2+0.2|x|y|)^2.
+    We further upper bound (-2+0.2xy)^2 with (2+0.2|x||y|)^2.
     The supremum is at (x, y) that is the furtherest from (0, 0),
     and therefore we just use the vertices of the rectangular region.
     """
