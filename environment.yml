@@ -1,0 +1,19 @@
+name: pricely
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - pip
+  - matplotlib
+  - numpy
+  - scipy
+  - tqdm
+  - cvxopt
+  - cvxpy
+  - ecos
+  - pybind11
+  - qdldl-python
+  - scs
+  - pip:
+    - dreal

@@ -1,7 +1,0 @@
-cvxpy
-dreal
-joblib
-matplotlib
-numpy
-scipy
-tqdm
