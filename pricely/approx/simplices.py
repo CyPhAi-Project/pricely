@@ -143,6 +143,20 @@ class SimplicialComplex(PApproxDynamic):
         self._y_values = f_bbox(self.x_values, self.u_values)
         self._lips = self._calc_lipschitz()
 
+    @classmethod
+    def from_autonomous(
+        cls,
+        x_roi: NDArrayFloat, x_values: NDArrayFloat,
+        f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat]):
+        return cls(
+            x_roi=x_roi,
+            u_roi=np.empty((2, 0)),
+            x_values=x_values,
+            u_values=np.empty((len(x_values), 0)),
+            f_bbox=lambda x, u: f_bbox(x),
+            lip_bbox=lambda x, u: lip_bbox(x))
+
     @property
     def x_values(self) -> NDArrayFloat:
         "Get sampled states"
