@@ -23,9 +23,10 @@ class QuadraticLearner(PLyapunovLearner):
         # constraints from samples
         yP = y @ self._pd_mat
         yPx = cp.sum(cp.multiply(yP, x), axis=1)
+        b = 0.5*self._lambda*cp.sum(x**2, axis=1)
         constraints = [
             self._pd_mat - self._tol >> 0,  # ensure x^T Px > 0 for x != 0
-            yPx + 0.5*self._lambda*cp.sum(x**2, axis=1) <= 0,
+            yPx + b <= 0,
         ]
 
         # Maximize the distance that still ensures yj P x <= 0
@@ -35,7 +36,15 @@ class QuadraticLearner(PLyapunovLearner):
         ## Because the origin is on the hyperplane and (P yj/||P yj||) is the normal vector,
         ## we can derive r = -xj (P yj / ||P yj||) since xj P yj < 0.
         ## Then, -2*xj P yj - ||P yj||^2 = 2r||P yj|| - ||P yj||^2 = r^2 - (r-||P yj||)^2 <= r^2
-        obj = cp.Minimize(cp.sum(2*yPx) + cp.sum_squares(yP))
+        # obj = cp.Minimize(cp.sum(2*yPx) + cp.sum_squares(yP))
+
+        # Find a good candidate in the polytope defined by constraints to ensure the termination
+        # See Section 4.1 in "Learning control lyapunov functions from counterexamples and demonstrations"
+        # TODO Find the center of the maximum volume ellipsoid (MVE) inscribed in the polytope
+        # obj = cp.Maximize(_)
+        # Find the analytical center
+        obj = cp.Maximize(cp.sum(cp.log(-b - yPx)))
+
         ## L-inf norm: dj_max <= -xj P yj / sum(abs(P yj))
         # See "An analytical solution to the minimum Lp-norm of a hyperplane"
         # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported by CVXPY
