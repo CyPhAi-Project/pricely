@@ -47,10 +47,11 @@ def add_valid_regions(ax: Axes, approx: PApproxDynamic, cex_regions):
 
 
 def _add_simplicial_complex(ax: Axes, tri: Delaunay, cex_regions):
-    mask = np.zeros(len(tri.simplices), dtype=bool)
+    mask = np.ones(len(tri.simplices), dtype=bool)
     unverified = [j for j, _ in cex_regions]
-    mask[unverified] = True
-    ax.tripcolor(tri.points[:,0], tri.points[:,1], triangles=tri.simplices, mask=mask, facecolors=np.ones(len(tri.simplices)), cmap="Accent")
+    mask[unverified] = False
+    # Color unverifed regions
+    ax.tripcolor(tri.points[:,0], tri.points[:,1], triangles=tri.simplices, mask=mask, facecolors=np.ones(len(tri.simplices)), cmap="Pastel1")
     ax.triplot(tri.points[:,0], tri.points[:,1], triangles=tri.simplices, lw=0.5, alpha=0.7)
 
 
@@ -67,9 +68,9 @@ def _add_axis_aligned_boxes(ax: Axes, regions: np.ndarray, cex_regions):
     for j in range(num_regions):
         if j == k:
             k = next(sat_region_iter, None)
-            facecolor = "white"
+            facecolor = "red"
         else:
-            facecolor = "green"
+            facecolor = "white"
         w, h = x_ubs[j] - x_lbs[j]
         rect = Rectangle(x_lbs[j], w, h, fill=True,
                          edgecolor='black', facecolor=facecolor, alpha=0.3)
