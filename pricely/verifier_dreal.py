@@ -3,7 +3,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Sequence, Union
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
+from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
 
 
 def pretty_sub(i: int) -> str:
@@ -70,13 +70,18 @@ class SMTVerifier(PLyapunovVerifier):
             x_roi: NDArrayFloat,
             u_dim: int = 0,
             abs_x_lb: ArrayLike = 2**-6,
+            norm_lb: float = 0.0,
+            norm_ub: float = np.inf,
             config: Union[Config, ConfigTuple] = ConfigTuple()) -> None:
         assert x_roi.shape[0] == 2 and x_roi.shape[1] >= 1
         assert np.all(np.asfarray(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
+        assert 0.0 <= norm_lb <= norm_ub
 
         self._x_roi = x_roi
         self._u_dim = u_dim
         self._abs_x_lb = abs_x_lb
+        self._norm_lb = norm_lb
+        self._norm_ub = norm_ub
         if isinstance(config, ConfigTuple):
             self._conf_tup = config
         else:  # Explicit copy and convert to Python tuple for pickling
@@ -90,6 +95,12 @@ class SMTVerifier(PLyapunovVerifier):
     @property
     def u_dim(self) -> int:
         return self._u_dim
+
+    def filter_idx(self, x_values: NDArrayFloat) -> NDArrayIndex:
+        return np.logical_and.reduce((
+            abs(x_values).min(axis=1) >= self._abs_x_lb,
+            np.linalg.norm(x_values, axis=1) >= self._norm_lb,
+            np.linalg.norm(x_values, axis=1) <=  self._norm_ub))
 
     def set_lyapunov_candidate(
             self, lya: PLyapunovCandidate):
@@ -182,6 +193,13 @@ class SMTVerifier(PLyapunovVerifier):
             assert len(abs_x_ub) == len(x_vars)
             abs_x_ub_conds = (abs(x) <= Expr(ub) for x, ub in zip(x_vars, abs_x_ub))
         region_pred_list.extend(abs_x_ub_conds)
+
+        if self._norm_lb > 0.0 or np.isfinite(self._norm_ub):
+            norm_sq = sum(x**2 for x in x_vars)
+            norm_lb_cond = norm_sq >= self._norm_lb**2
+            norm_ub_cond = norm_sq <= self._norm_ub**2
+            region_pred_list.append(norm_lb_cond)
+            region_pred_list.append(norm_ub_cond)
 
         sublevel_set_cond = (lya.lya_expr(x_vars) <= Expr(lya_cand_level_ub))
         region_pred_list.append(sublevel_set_cond)

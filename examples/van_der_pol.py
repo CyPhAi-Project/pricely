@@ -4,18 +4,20 @@
 Learning Dyanmics and Lyapunov function for the Van der Pol oscillator
 """
 
-from dreal import Expression as Expr, Variable  # type: ignore
+from dreal import And, Expression as Expr, Variable  # type: ignore
 import numpy as np
 from typing import Sequence
 
 
 X_DIM = 2
 X_ROI = np.array([
-    [-0.875, -0.875],  # Lower bounds
-    [+0.875, +0.875]  # Upper bounds
+    [-1.25, -1.25],  # Lower bounds
+    [+1.25, +1.25]  # Upper bounds
 ])
 assert X_ROI.shape == (2, X_DIM)
 ABS_X_LB = 0.03125
+NORM_LB = 0.2
+NORM_UB = 1.2
 
 
 def f_bbox(x: np.ndarray):

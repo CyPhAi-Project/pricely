@@ -25,9 +25,13 @@ def check_lyapunov_roi(
     x_roi: np.ndarray,
     lya_decay_rate: float = 0.0,
     abs_x_lb: ArrayLike = 2**-6,
+    norm_lb: float = 0.0,
+    norm_ub: float = np.inf,
     config: Config = Config()
 ) -> Optional[Box]:
     assert x_roi.shape == (2, len(x_vars))
+    assert 0.0 <= norm_lb <= norm_ub
+
     lb_conds = [x >= Expr(lb) for x, lb in zip(x_vars, x_roi[0])]
     ub_conds = [x <= Expr(ub) for x, ub in zip(x_vars, x_roi[1])]
 
@@ -39,8 +43,13 @@ def check_lyapunov_roi(
         assert len(abs_x_lb) == len(x_vars)
         abs_lb_conds.extend(
             abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
+    if norm_lb > 0.0 or np.isfinite(norm_ub):
+        norm_sq = sum(x**2 for x in x_vars)
+        norm_conds = [norm_sq >= norm_lb**2, norm_sq <= norm_ub**2]
+    else:
+        norm_conds = []
 
-    in_roi_pred = logical_and(*lb_conds, *ub_conds, *abs_lb_conds)
+    in_roi_pred = logical_and(*lb_conds, *ub_conds, *abs_lb_conds, *norm_conds)
 
     neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr, lya_decay_rate)
     smt_query = logical_and(in_roi_pred, neg_lya_cond)

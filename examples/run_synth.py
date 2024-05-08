@@ -1,16 +1,15 @@
 from datetime import date
 from dreal import Config, Variable  # type: ignore
 import numpy as np
-
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
+from scipy.spatial.distance import pdist
 
 from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
 from pricely.approx.boxes import AxisAlignedBoxes
 from pricely.approx.simplices import SimplicialComplex
 from pricely.cegus_lyapunov import cegus_lyapunov
-from pricely.gen_cover import gen_init_cover
 from pricely.learner_cvxpy import QuadraticLearner
 from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set, gen_equispace_regions
 from pricely.verifier_dreal import SMTVerifier, pretty_sub
@@ -20,10 +19,48 @@ OUT_DIR = Path(f"out/{str(date.today())}")
 OUT_DIR.mkdir(exist_ok=True)
 
 
+def viz_2d(ax, x_roi, abs_x_lb, abs_x_ub, last_approx, cex_regions):
+    print(" Plotting verified regions ".center(80, "="))
+    # Calculate the axis-aligned bounding box
+    abs_x_ub = np.asfarray(abs_x_ub)
+    # ax.set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
+    # ax.set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
+    ax.set_xlim(*(1.125*x_roi[:, 0]))
+    ax.set_ylim(*(1.125*x_roi[:, 1]))
+
+    add_valid_regions(
+        ax, last_approx, cex_regions)
+    ax.add_patch(Rectangle(
+        (-abs_x_lb, -abs_x_lb), 2*abs_x_lb, 2*abs_x_lb, color='b', fill=False))
+    ax.add_patch(Rectangle(
+        (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
+    ax.add_patch(Rectangle(
+        (x_roi[0][0], x_roi[0][1]), x_roi[1][0]-x_roi[0][0], x_roi[1][1]-x_roi[0][1], color='r', fill=False))
+
+def viz_region_diameter(x_roi, cand, approx, cex_regions):
+    from pricely.candidates import QuadraticLyapunov
+
+    assert isinstance(cand, QuadraticLyapunov)
+    assert isinstance(approx, SimplicialComplex)
+    print(" Plotting diameters of all regions in descending order".center(80, "="))
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    tri = approx._triangulation
+
+    max_dists = [pdist(approx.x_values[simplex]).max() for simplex in tri.simplices]
+    max_dists.sort(reverse=True)
+    ax.bar(np.arange(len(max_dists)), max_dists, width=1.0)
+    fig.tight_layout()
+    return fig
+
+
 def main(max_epochs: int=15):
     # import circle_following as mod
     # import lcss2020_eq5 as mod
     # import lcss2020_eq13 as mod
+    # import lcss2020_eq14 as mod
+    # import lcss2020_eq15 as mod
     import path_following_stanley as mod
     # import van_der_pol as mod
     # import inverted_pendulum as mod
@@ -52,13 +89,11 @@ def main(max_epochs: int=15):
                 for bnd, cuts in zip(mod.X_ROI.T, init_part)
             ]
             x_values = cartesian_prod(*axis_cuts)
-            approx = SimplicialComplex(
+            approx = SimplicialComplex.from_autonomous(
                 x_roi=mod.X_ROI,
-                u_roi=getattr(mod, "U_ROI", np.empty((2, 0))),
                 x_values=x_values,
-                u_values=np.empty((len(x_values), 0)),
-                f_bbox=lambda x, u: mod.f_bbox(x),  # TODO: support systems with and without input
-                lip_bbox=lambda x, u: mod.calc_lip_bbox(x))  # TODO: support systems with and without input
+                f_bbox=mod.f_bbox,
+                lip_bbox=mod.calc_lip_bbox)
 
     # dReal configurations
     config = Config()
@@ -70,7 +105,10 @@ def main(max_epochs: int=15):
     print(" Run CEGuS ".center(80, "="))
     with timer:
         learner = QuadraticLearner(mod.X_DIM)
-        verifier = SMTVerifier(x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB, config=config)
+        verifier = SMTVerifier(
+            x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB,
+            norm_lb=getattr(mod, "NORM_LB", 0.0),
+            norm_ub=getattr(mod, "NORM_UB", np.inf), config=config)
         last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
@@ -91,7 +129,10 @@ def main(max_epochs: int=15):
             x_vars, dxdt_exprs, lya_expr,
             mod.X_ROI,
             lya_decay_rate,
-            mod.ABS_X_LB, config=config)
+            mod.ABS_X_LB,
+            norm_lb=getattr(mod, "NORM_LB", 0.0),
+            norm_ub=getattr(mod, "NORM_UB", np.inf),
+            config=config)
         if result is None:
             print("Learned candidate is a valid Lyapunov function for ROI.")
         else:
@@ -109,37 +150,31 @@ def main(max_epochs: int=15):
             print(f"Counterexample:\n{result}")
         cover_roi = (result is None)
 
+
+    fig_err = viz_region_diameter(mod.X_ROI, cand, last_approx, cex_regions)
+    f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
+    f_path = OUT_DIR / f_name
+    fig_err.savefig(f_path)
+    plt.clf()
+    print(f'The plot is saved to "{f_path}".')
+
     if mod.X_DIM != 2:  # Support plotting 2D systems only
         return
 
-    print(" Plotting verified regions ".center(80, "="))
-    # Calculate the axis-aligned bounding box
-    abs_x_ub = np.asfarray(abs_x_ub)
-    # plt.gca().set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
-    # plt.gca().set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
-    plt.gca().set_xlim(*(1.125*mod.X_ROI[:, 0]))
-    plt.gca().set_ylim(*(1.125*mod.X_ROI[:, 1]))
-
-    plt.gca().set_title(
+    fig_cover = plt.figure()
+    fig_cover.suptitle(f"Cover of ROI for {mod.__name__}")
+    ax = fig_cover.add_subplot()
+    ax.set_title(
         f"CEGuS Status: {cegus_status}.\n"
         f"Is True Lyapunov: {str(validation)}. "
         f"BOA covers ROI: {str(cover_roi)}. \n"
         f"# epoch: {last_epoch}. "
         f"# total samples: {len(last_approx.x_values)}. "
         f"Time: {cegus_time_usage:.3f}s")
-    add_valid_regions(
-        plt.gca(), last_approx, cex_regions)
-    plt.gca().add_patch(Rectangle(
-        (-mod.ABS_X_LB, -mod.ABS_X_LB), 2*mod.ABS_X_LB, 2*mod.ABS_X_LB, color='b', fill=False))
-    plt.gca().add_patch(Rectangle(
-        (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
-    plt.gca().add_patch(Rectangle(
-        (mod.X_ROI[0][0], mod.X_ROI[0][1]), mod.X_ROI[1][0]-mod.X_ROI[0][0], mod.X_ROI[1][1]-mod.X_ROI[0][1], color='r', fill=False))
-
-    # add_level_sets(plt.gca(), cand.lya_values, level_ub=level_ub)
-
-    plt.gca().set_aspect("equal")
-    plt.tight_layout()
+    viz_2d(ax, mod.X_ROI, mod.ABS_X_LB, abs_x_ub, last_approx, cex_regions)
+    # add_level_sets(ax, cand.lya_values, level_ub=level_ub)
+    ax.set_aspect("equal")
+    fig_cover.tight_layout()
     f_name = f"cegus-{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
     f_path = OUT_DIR / f_name
     plt.savefig(f_path)

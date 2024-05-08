@@ -11,6 +11,7 @@ import warnings
 
 
 NDArrayFloat = NDArray[np.float_]
+NDArrayIndex = NDArray[np.int_]
 
 class PLyapunovCandidate(Protocol):
     @abc.abstractmethod
@@ -123,6 +124,10 @@ class PApproxDynamic(Sequence[PLocalApprox]):
 
 class PLyapunovVerifier(Protocol):
     @abc.abstractmethod
+    def filter_idx(self, x_values: NDArrayFloat) -> NDArrayIndex:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def set_lyapunov_candidate(self, cand: PLyapunovCandidate):
         raise NotImplementedError
 
@@ -169,8 +174,12 @@ def cegus_lyapunov(
     obj_values = []
     for epoch in outer_pbar:
         # Learner learners a new Lyapunov function candidate and return the history of loss values
-        objs = learner.fit_loop(x_values, u_values, dxdt_values,
-                                max_epochs=max_iter_learn, copy=False)
+        filter_idx = verifier.filter_idx(x_values)
+        objs = learner.fit_loop(
+            x_values[filter_idx],
+            u_values[filter_idx],
+            dxdt_values[filter_idx],
+            max_epochs=max_iter_learn, copy=False)
         obj_values.extend(objs)
 
         # Verify Lyapunov condition
@@ -202,8 +211,7 @@ def cegus_lyapunov(
             "#Total Regions": len(curr_approx),
             "#Samples": len(curr_approx.x_values)})
         if len(cex_regions) == 0:
-            if num_timeouts != 0:
-                pass  # TODO report timeout regions
+            assert num_timeouts == 0
             # Lyapunov function candidate passed
             return epoch, curr_approx, cex_regions
         if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
