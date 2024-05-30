@@ -27,6 +27,9 @@ class QuadraticLyapunov(PLyapunovCandidate):
     def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         return np.sum((x_values @ self._pd_mat) * x_values, axis=1) / 2.0
 
+    def lie_der_values(self, x_values: NDArrayFloat, y_values: NDArrayFloat) -> NDArrayFloat:
+        return np.sum((x_values @ self._pd_mat) * y_values, axis=1)
+
     def lya_decay_rate(self) -> float:
         # Inverse of Spectral Radius
         eig_max_inv = self._lambda / np.abs(np.linalg.eigvalsh(self._pd_mat)).max()

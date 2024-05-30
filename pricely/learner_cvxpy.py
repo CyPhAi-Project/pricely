@@ -4,7 +4,7 @@ import numpy as np
 from typing import Sequence
 
 from pricely.candidates import QuadraticLyapunov
-from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PLyapunovLearner
+from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovLearner
 
 
 class QuadraticLearner(PLyapunovLearner):
@@ -44,30 +44,28 @@ class QuadraticLearner(PLyapunovLearner):
         # obj = cp.Maximize(_)
         # Find the analytical center
         obj = cp.Maximize(cp.sum(cp.log(-b - yPx)))
-
-        ## L-inf norm: dj_max <= -xj P yj / sum(abs(P yj))
-        # See "An analytical solution to the minimum Lp-norm of a hyperplane"
-        # obj = cp.Maximize(cp.sum(-xPy / cp.sum(Py, axis= 1)))  # XXX Not supported by CVXPY
         prob = cp.Problem(obj, constraints)
 
-        for solver in [cp.CLARABEL, cp.CVXOPT]:
+        for solver in [cp.CLARABEL, cp.SCS]:
             try:
                 prob.solve(solver)
                 break  # Early terminate when a solver suceeded
             except cp.SolverError:
                 continue
 
-        if prob.status == "optimal":
+        if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
             return [obj.value/len(x)]  # type: ignore
-        elif prob.status == "infeasible":
+        elif prob.status in [cp.INFEASIBLE, cp.INFEASIBLE_INACCURATE]:
             raise RuntimeError("Learner cannot find a quadratic Lyapunov function")
         else:
             raise RuntimeError(f"CVXPY returns status {prob.status}.")
 
-    def get_candidate(self) -> PLyapunovCandidate:
-        assert self._pd_mat.value is not None
+    def get_candidate(self) -> QuadraticLyapunov:
         assert self._lambda.value is not None
+
         if self._u_dim == 0:
+            if self._pd_mat.value is None:
+                return QuadraticLyapunov(np.eye(self._x_dim), decay_rate=self._lambda.value)    
             return QuadraticLyapunov(self._pd_mat.value, decay_rate=self._lambda.value)
         else:
             raise NotImplementedError("Learning Lyapunov controller is not supported yet.")

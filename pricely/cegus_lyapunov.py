@@ -26,6 +26,10 @@ class PLyapunovCandidate(Protocol):
         return 0.0  # default no decay
 
     @abc.abstractmethod
+    def lie_der_values(self, x_values: NDArrayFloat, y_values: NDArrayFloat) -> NDArrayFloat:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def ctrl_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
         raise NotImplementedError
 
@@ -160,10 +164,9 @@ def cegus_lyapunov(
     assert max_epochs > 0
     # Initial set cover and sampled values
     curr_approx = init_approx
-    x_values = curr_approx.x_values
-    u_values = curr_approx.u_values
-    dxdt_values = curr_approx.y_values
 
+    # Get initial candidate
+    cand = learner.get_candidate()
     outer_pbar = tqdm(
         iter(range(1, max_epochs + 1)),
         desc="Outer", ascii=True, postfix={
@@ -173,14 +176,18 @@ def cegus_lyapunov(
     cex_regions = []
     obj_values = []
     for epoch in outer_pbar:
-        # Learner learners a new Lyapunov function candidate and return the history of loss values
-        filter_idx = verifier.filter_idx(x_values)
-        objs = learner.fit_loop(
-            x_values[filter_idx],
-            u_values[filter_idx],
-            dxdt_values[filter_idx],
-            max_epochs=max_iter_learn, copy=False)
-        obj_values.extend(objs)
+        # Prepare dataset for learning
+        filter_idx = verifier.filter_idx(curr_approx.x_values)
+        x_values = curr_approx.x_values[filter_idx]
+        u_values = curr_approx.u_values[filter_idx]
+        y_values = curr_approx.y_values[filter_idx]
+
+        # Learn a new candidate only when the current one is invalidated
+        if np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
+            objs = learner.fit_loop(
+                x_values, u_values, y_values,
+                max_epochs=max_iter_learn, copy=False)
+            obj_values.extend(objs)
 
         # Verify Lyapunov condition
         cand = learner.get_candidate()
@@ -222,11 +229,6 @@ def cegus_lyapunov(
         # else:
         # Update the cover with counterexamples
         curr_approx.add(cex_regions, cand)
-
-        # New dataset after adding counterexample states and input from current controller
-        x_values = curr_approx.x_values
-        u_values = curr_approx.u_values
-        dxdt_values = curr_approx.y_values
 
     outer_pbar.close()
 

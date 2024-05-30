@@ -221,15 +221,17 @@ class SimplicialComplex(PApproxDynamic):
         assert cex_regions.shape[1] == 2 and cex_regions.shape[2] == self.x_dim
         new_x_values = cex_regions.mean(axis=1)
         assert np.alltrue(np.isfinite(new_x_values))
-        new_u_values = cand.ctrl_values(new_x_values)
-        new_y_values = self._f_bbox(new_x_values, new_u_values)
 
         # NOTE This assumes SciPy Delaunay class maintains the order of added points.
         try:
-            self._triangulation.add_points(new_x_values)
+            self._triangulation.add_points(
+                new_x_values,
+                restart=10*len(new_x_values)>=len(self._triangulation.points))
         except QhullError as e:
-            print("Min dist: ", cdist(self._triangulation.points, new_x_values).ravel().min())
             raise RuntimeError("Exception in triangulation.")
+        
+        new_u_values = cand.ctrl_values(new_x_values)
+        new_y_values = self._f_bbox(new_x_values, new_u_values)
         self._u_values = np.row_stack((self._u_values, new_u_values))
         self._y_values = np.row_stack((self._y_values, new_y_values))
 

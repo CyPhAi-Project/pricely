@@ -1,7 +1,8 @@
 from datetime import date
 from dreal import Config, Variable  # type: ignore
 import numpy as np
-from matplotlib.patches import Rectangle
+from math import factorial
+from matplotlib.patches import Circle, Ellipse, Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.spatial.distance import pdist
@@ -9,6 +10,7 @@ from scipy.spatial.distance import pdist
 from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
 from pricely.approx.boxes import AxisAlignedBoxes
 from pricely.approx.simplices import SimplicialComplex
+from pricely.candidates import QuadraticLyapunov
 from pricely.cegus_lyapunov import cegus_lyapunov
 from pricely.learner_cvxpy import QuadraticLearner
 from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set, gen_equispace_regions
@@ -19,55 +21,90 @@ OUT_DIR = Path(f"out/{str(date.today())}")
 OUT_DIR.mkdir(exist_ok=True)
 
 
-def viz_2d(ax, x_roi, abs_x_lb, abs_x_ub, last_approx, cex_regions):
+def viz_2d(ax, mod, last_approx, cex_regions, cand: QuadraticLyapunov):
     print(" Plotting verified regions ".center(80, "="))
     # Calculate the axis-aligned bounding box
-    abs_x_ub = np.asfarray(abs_x_ub)
     # ax.set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
     # ax.set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
-    ax.set_xlim(*(1.125*x_roi[:, 0]))
-    ax.set_ylim(*(1.125*x_roi[:, 1]))
+    x_roi = mod.X_ROI
+    abs_x_lb = mod.ABS_X_LB
+    ax.set_xlim(*(1.0625*x_roi[:, 0]))
+    ax.set_ylim(*(1.0625*x_roi[:, 1]))
 
     add_valid_regions(
         ax, last_approx, cex_regions)
-    ax.add_patch(Rectangle(
-        (-abs_x_lb, -abs_x_lb), 2*abs_x_lb, 2*abs_x_lb, color='b', fill=False))
-    ax.add_patch(Rectangle(
-        (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
-    ax.add_patch(Rectangle(
-        (x_roi[0][0], x_roi[0][1]), x_roi[1][0]-x_roi[0][0], x_roi[1][1]-x_roi[0][1], color='r', fill=False))
+    # ax.add_patch(Rectangle(
+    #     (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
 
-def viz_region_diameter(x_roi, cand, approx, cex_regions):
+    if hasattr(mod, "NORM_LB"):
+        ax.add_patch(Circle((0, 0), mod.NORM_LB, color='r', fill=False))
+    else:
+        ax.add_patch(Rectangle(
+            (-abs_x_lb, -abs_x_lb), 2*abs_x_lb, 2*abs_x_lb, color='r', fill=False))
+
+    if hasattr(mod, "NORM_UB"):
+        ax.add_patch(Circle((0, 0), mod.NORM_UB, color='r', fill=False))
+        l_min = np.linalg.eigvalsh(cand._pd_mat)[0]
+        level_ub = 0.5*l_min*(mod.NORM_UB**2)
+    else:
+        ax.add_patch(Rectangle(
+            (x_roi[0][0], x_roi[0][1]), x_roi[1][0]-x_roi[0][0], x_roi[1][1]-x_roi[0][1], color='r', fill=False))
+        p_inv = np.linalg.inv(cand._pd_mat)
+        level_ub = 0.5*(x_roi[1]**2 / p_inv.diagonal()).min()
+    # Draw Basin of Attraction
+    add_level_sets(ax, cand.lya_values, level_ub, colors="b")
+
+
+def viz_region_stats(x_roi, cand, approx, cex_regions):
     from pricely.candidates import QuadraticLyapunov
+
+    x_dim = x_roi.shape[1]
 
     assert isinstance(cand, QuadraticLyapunov)
     assert isinstance(approx, SimplicialComplex)
-    print(" Plotting diameters of all regions in descending order".center(80, "="))
+    print(" Plotting volumes of all regions in descending order".center(80, "="))
     fig = plt.figure()
-    ax = fig.add_subplot()
+    fig.suptitle("Volumes of regions")
+    ax = fig.add_subplot(211)
 
     tri = approx._triangulation
 
-    max_dists = [pdist(approx.x_values[simplex]).max() for simplex in tri.simplices]
-    max_dists.sort(reverse=True)
-    ax.bar(np.arange(len(max_dists)), max_dists, width=1.0)
+    # max_dists = [pdist(approx.x_values[simplex]).max() for simplex in tri.simplices]
+    # max_dists.sort(reverse=True)
+    # ax.bar(np.arange(len(max_dists)), max_dists, width=1.0)
+
+    vols = []
+    n_fact = factorial(x_dim)
+    for simplex in tri.simplices:
+        x_vertices = approx.x_values[simplex]
+        vol = abs(np.linalg.det((x_vertices[1:] - x_vertices[0])))/n_fact
+        vols.append(vol)
+    vols = np.asfarray(vols)
+    sorted_idx = np.flip(np.argsort(vols))
+
+    print(f"Vol sum: {sum(vols)}")
+    ax.bar(np.arange(len(vols)), vols[sorted_idx], color="b", width=1.0)
+
+    ax1 = fig.add_subplot(212)
+    ax1.scatter(vols[sorted_idx], approx._lips[sorted_idx], s=0.2)
     fig.tight_layout()
     return fig
 
 
-def main(max_epochs: int=15):
+def main(max_epochs: int=40, n_jobs: int=16):
     # import circle_following as mod
     # import lcss2020_eq5 as mod
     # import lcss2020_eq13 as mod
     # import lcss2020_eq14 as mod
-    # import lcss2020_eq15 as mod
-    import path_following_stanley as mod
+    import lcss2020_eq15 as mod
+    # import path_following_stanley as mod
+    # import traj_tracking_wheeled as mod
     # import van_der_pol as mod
     # import inverted_pendulum as mod
 
     timer = CatchTime()
 
-    init_part = [30]*mod.X_DIM
+    init_part = [5]*mod.X_DIM
     print(" Validate local Lipschitz constants ".center(80, "="))
     with timer:
         validate_lip_bbox(mod, init_part)
@@ -112,7 +149,7 @@ def main(max_epochs: int=15):
         last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
-                max_epochs=max_epochs, max_iter_learn=1, n_jobs=20)
+                max_epochs=max_epochs, max_iter_learn=1, n_jobs=n_jobs)
     cegus_status = "Found" if not cex_regions else "Can't Find" if last_epoch < max_epochs else "Reach epoch limit"
     cegus_time_usage = timer.elapsed
 
@@ -146,12 +183,11 @@ def main(max_epochs: int=15):
         if result is None:
             print("The Basin of Attraction can cover the entire ROI.")
         else:
-            print("The Basin of Attraction cannot cover the entire ROI.")
-            print(f"Counterexample:\n{result}")
+            print("Cannot prove if the Basin of Attraction covers the entire ROI.")
         cover_roi = (result is None)
 
 
-    fig_err = viz_region_diameter(mod.X_ROI, cand, last_approx, cex_regions)
+    fig_err = viz_region_stats(mod.X_ROI, cand, last_approx, cex_regions)
     f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
     f_path = OUT_DIR / f_name
     fig_err.savefig(f_path)
@@ -171,7 +207,7 @@ def main(max_epochs: int=15):
         f"# epoch: {last_epoch}. "
         f"# total samples: {len(last_approx.x_values)}. "
         f"Time: {cegus_time_usage:.3f}s")
-    viz_2d(ax, mod.X_ROI, mod.ABS_X_LB, abs_x_ub, last_approx, cex_regions)
+    viz_2d(ax, mod, last_approx, cex_regions, cand)
     # add_level_sets(ax, cand.lya_values, level_ub=level_ub)
     ax.set_aspect("equal")
     fig_cover.tight_layout()
