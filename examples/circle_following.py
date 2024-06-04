@@ -6,13 +6,15 @@ KAPPA = 1.0
 VEL = 1.0  # m/s
 
 X_DIM = 2
-THETA_LIM = np.pi / 4
+NORM_LB = 0.1
+NORM_UB = 0.8
 X_ROI = np.array([
-    [-0.75, -THETA_LIM],  # Lower bounds
-    [+0.75, +THETA_LIM]  # Upper bounds
+    [-NORM_UB]*X_DIM, # Lower bounds
+    [+NORM_UB]*X_DIM  # Upper bounds
 ])
 assert X_ROI.shape == (2, X_DIM)
 ABS_X_LB = 2**-6
+
 
 B_MAT = np.array([
     [2.75, 0],

@@ -8,12 +8,14 @@ from typing import Sequence
 
 
 X_DIM = 2
+NORM_LB = 0.1
+NORM_UB = 1.0
 X_ROI = np.array([
-    [-2.0, -2.0], # Lower bounds
-    [+2.0, +2.0]  # Upper bounds
+    [-NORM_UB]*X_DIM, # Lower bounds
+    [+NORM_UB]*X_DIM  # Upper bounds
 ])
 assert X_ROI.shape == (2, X_DIM)
-ABS_X_LB = 2**-10
+ABS_X_LB = 2**-4
 
 
 def f_bbox(q: np.ndarray) -> np.ndarray:
