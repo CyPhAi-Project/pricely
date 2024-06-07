@@ -92,15 +92,16 @@ def viz_region_stats(x_roi, cand, approx, cex_regions):
 
 
 def main(max_epochs: int=40, n_jobs: int=16):
-    # import circle_following as mod
+    # import hscc2014_normalized_pendulum as mod
     # import lcss2020_eq5 as mod
     # import lcss2020_eq13 as mod
     # import lcss2020_eq14 as mod
     import lcss2020_eq15 as mod
-    # import path_following_stanley as mod
     # import traj_tracking_wheeled as mod
-    # import van_der_pol as mod
-    # import inverted_pendulum as mod
+    # import neurips2022_van_der_pol as mod
+    # import neurips2022_unicycle_following as mod
+    # import neurips2022_inverted_pendulum as mod
+    # import path_following_stanley as mod
 
     timer = CatchTime()
 
