@@ -105,15 +105,15 @@ class SMTVerifier(PLyapunovVerifier):
             np.linalg.norm(x_values, axis=1) <=  self._norm_ub))
 
     def set_lyapunov_candidate(
-            self, lya: PLyapunovCandidate):
-        self._lya_cand = lya
+            self, cand: PLyapunovCandidate):
+        self._lya_cand = cand
 
     def find_cex(
         self,
-        f_approx_j: PLocalApprox
+        approx_j: PLocalApprox
     ) -> Optional[NDArrayFloat]:
         x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(self.x_dim)]
-        smt_query = self._inst_verif_conds(f_approx_j, x_vars)
+        smt_query = self._inst_verif_conds(approx_j, x_vars)
 
         result = CheckSatisfiability(smt_query, to_dreal(self._conf_tup))
         if not result:
