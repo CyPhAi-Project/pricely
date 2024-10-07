@@ -206,9 +206,6 @@ def cegus_lyapunov(
                     if box is not None:
                         cex_regions.append((j, box))
                 except TimeoutError:
-                    cex = curr_approx[j].x_witness
-                    box = np.row_stack((cex, cex))
-                    cex_regions.append((j, box))
                     num_timeouts += 1
 
         if num_timeouts > 0:
