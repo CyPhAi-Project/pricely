@@ -165,8 +165,6 @@ def cegus_lyapunov(
     # Initial set cover and sampled values
     curr_approx = init_approx
 
-    # Get initial candidate
-    cand = learner.get_candidate()
     outer_pbar = tqdm(
         iter(range(1, max_epochs + 1)),
         desc="Outer", ascii=True, postfix={
@@ -175,57 +173,63 @@ def cegus_lyapunov(
             "#Samples": len(curr_approx.x_values)})
     cex_regions = []
     obj_values = []
+
+    ## Prepare dataset for learning
+    filter_idx = verifier.filter_idx(curr_approx.x_values)
+    x_values = curr_approx.x_values[filter_idx]
+    u_values = curr_approx.u_values[filter_idx]
+    y_values = curr_approx.y_values[filter_idx]
     for epoch in outer_pbar:
-        # Prepare dataset for learning
-        filter_idx = verifier.filter_idx(curr_approx.x_values)
-        x_values = curr_approx.x_values[filter_idx]
-        u_values = curr_approx.u_values[filter_idx]
-        y_values = curr_approx.y_values[filter_idx]
-
-        # Learn a new candidate only when the current one is invalidated
-        if np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
-            objs = learner.fit_loop(
-                x_values, u_values, y_values,
-                max_epochs=max_iter_learn, copy=False)
-            obj_values.extend(objs)
-
-        # Verify Lyapunov condition
+        # Learn a new candidate
+        objs = learner.fit_loop(
+            x_values, u_values, y_values,
+            max_epochs=max_iter_learn, copy=False)
+        obj_values.extend(objs)
         cand = learner.get_candidate()
         verifier.set_lyapunov_candidate(cand)
-        cex_regions.clear()
-        num_timeouts = 0
-        with Pool(n_jobs) as p:
-            future_list = [p.apply_async(
-                func=parallelizable_verify,
-                args=((j, verifier, curr_approx[j])))
-                for j in range(len(curr_approx))]
-            for future in tqdm(future_list,
-                               desc=f"Verify at {epoch}it", ascii=True, leave=False):
-                try:
-                    j, box = future.get(timeout_per_job)
-                    if box is not None:
-                        cex_regions.append((j, box))
-                except TimeoutError:
-                    num_timeouts += 1
+        while True:
+            num_timeouts = 0
+            cex_regions.clear()
+            with Pool(n_jobs) as p:
+                future_list = [p.apply_async(
+                    func=parallelizable_verify,
+                    args=((j, verifier, curr_approx[j])))
+                    for j in range(len(curr_approx))]
+                for future in tqdm(future_list,
+                                desc=f"Verify at {epoch}it", ascii=True, leave=False):
+                    try:
+                        j, box = future.get(timeout_per_job)
+                        if box is not None:
+                            cex_regions.append((j, box))
+                    except TimeoutError:
+                        num_timeouts += 1
 
-        if num_timeouts > 0:
-            tqdm.write(f'Timeout for {num_timeouts} regions at {epoch}it')
-        outer_pbar.set_postfix({
-            "#Valid Regions": len(curr_approx)-len(cex_regions),
-            "#Total Regions": len(curr_approx),
-            "#Samples": len(curr_approx.x_values)})
-        if len(cex_regions) == 0:
-            assert num_timeouts == 0
-            # Lyapunov function candidate passed
-            return epoch, curr_approx, cex_regions
-        if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
-            tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
-            return epoch, curr_approx, cex_regions
-        if epoch == max_epochs:
-            break
-        # else:
-        # Update the cover with counterexamples
-        curr_approx.add(cex_regions, cand)
+            if num_timeouts > 0:
+                tqdm.write(f'Timeout for {num_timeouts} regions at {epoch}it')
+            outer_pbar.set_postfix({
+                "#Valid Regions": len(curr_approx)-len(cex_regions),
+                "#Total Regions": len(curr_approx),
+                "#Samples": len(curr_approx.x_values)})
+            if len(cex_regions) == 0:
+                assert num_timeouts == 0
+                # Lyapunov function candidate passed
+                return epoch, curr_approx, cex_regions
+            if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
+                tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
+                return epoch, curr_approx, cex_regions
+
+            # Update the cover with counterexamples
+            curr_approx.add(cex_regions, cand)
+
+            filter_idx = verifier.filter_idx(curr_approx.x_values)
+            x_values = curr_approx.x_values[filter_idx]
+            u_values = curr_approx.u_values[filter_idx]
+            y_values = curr_approx.y_values[filter_idx]
+            if np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
+                print("tests")
+                break
+            if False:  # TODO Stop refinement
+                return epoch, curr_approx, cex_regions
 
     outer_pbar.close()
 
