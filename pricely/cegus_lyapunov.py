@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from signal import signal, SIGINT
 from tqdm import tqdm
-from typing import Callable, Optional, Protocol, Sequence, Tuple
+from typing import Callable, Literal, NamedTuple, Optional, Protocol, Sequence, Tuple
 import warnings
 
 
@@ -83,6 +83,11 @@ class PLocalApprox(Protocol):
     def x_witness(self) -> NDArrayFloat:
         raise NotImplementedError
 
+    @property
+    @abc.abstractmethod
+    def domain_diameter(self) -> float:
+        raise NotImplementedError
+
     @abc.abstractmethod
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         raise NotImplementedError
@@ -127,6 +132,11 @@ class PApproxDynamic(Sequence[PLocalApprox]):
 
 
 class PLyapunovVerifier(Protocol):
+    @property
+    @abc.abstractmethod
+    def x_dim(self) -> int:
+        raise NotImplementedError
+
     @abc.abstractmethod
     def filter_idx(self, x_values: NDArrayFloat) -> NDArrayIndex:
         raise NotImplementedError
@@ -149,19 +159,29 @@ def parallelizable_verify(
         verifier: PLyapunovVerifier,
         f_approx_j: PLocalApprox):
     signal(SIGINT, handler)
-    return j, verifier.find_cex(f_approx_j)
+    return j, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
+
+
+class CEGuSResult(NamedTuple):
+    status: Literal["FOUND", "NO_CANDIDATE", "EPOCH_LIMIT", "SAMPLE_LIMIT", "PRECISION_LIMIT"]
+    epoch: int
+    approx: PApproxDynamic
+    cex_regions: Sequence[Tuple[int, NDArrayFloat]]
 
 
 def cegus_lyapunov(
         learner: PLyapunovLearner,
         verifier: PLyapunovVerifier,
         init_approx: PApproxDynamic,
+        eps: float = 1e-6,
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5,
         n_jobs: int = 1,
-        timeout_per_job: Optional[float] = 30.0):
+        timeout_per_job: Optional[float] = 30.0) -> CEGuSResult:
     assert max_epochs > 0
+
+    diam_lb = eps * np.sqrt(2.0 + 2.0 / verifier.x_dim) / 2.0
     # Initial set cover and sampled values
     curr_approx = init_approx
 
@@ -184,10 +204,19 @@ def cegus_lyapunov(
         objs = learner.fit_loop(
             x_values, u_values, y_values,
             max_epochs=max_iter_learn, copy=False)
+        if not objs:
+            tqdm.write("No Lyapunov candidate in learner's hypothesis space.")
+            return CEGuSResult("NO_CANDIDATE", epoch, curr_approx, cex_regions)
+
         obj_values.extend(objs)
         cand = learner.get_candidate()
         verifier.set_lyapunov_candidate(cand)
+        stop_refine = False
         while True:
+            if stop_refine:
+                tqdm.write("Current candidate can neither be proven nor falsified.")
+                return CEGuSResult("PRECISION_LIMIT", epoch, curr_approx, cex_regions)
+
             num_timeouts = 0
             cex_regions.clear()
             with Pool(n_jobs) as p:
@@ -196,10 +225,11 @@ def cegus_lyapunov(
                     args=((j, verifier, curr_approx[j])))
                     for j in range(len(curr_approx))]
                 for future in tqdm(future_list,
-                                desc=f"Verify at {epoch}it", ascii=True, leave=False):
+                                   desc=f"Verify at {epoch}it", ascii=True, leave=False):
                     try:
-                        j, box = future.get(timeout_per_job)
+                        j, box, diam = future.get(timeout_per_job)
                         if box is not None:
+                            stop_refine = stop_refine or (diam <= diam_lb)
                             cex_regions.append((j, box))
                     except TimeoutError:
                         num_timeouts += 1
@@ -213,10 +243,10 @@ def cegus_lyapunov(
             if len(cex_regions) == 0:
                 assert num_timeouts == 0
                 # Lyapunov function candidate passed
-                return epoch, curr_approx, cex_regions
+                return CEGuSResult("FOUND", epoch, curr_approx, cex_regions)
             if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
                 tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
-                return epoch, curr_approx, cex_regions
+                return CEGuSResult("SAMPLE_LIMIT", epoch, curr_approx, cex_regions)
 
             # Update the cover with counterexamples
             curr_approx.add(cex_regions, cand)
@@ -225,16 +255,15 @@ def cegus_lyapunov(
             x_values = curr_approx.x_values[filter_idx]
             u_values = curr_approx.u_values[filter_idx]
             y_values = curr_approx.y_values[filter_idx]
-            if np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
-                print("tests")
+            if np.any(cand.lya_values(x_values) <= 0.0) or \
+                    np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
+                # Found true counterexamples. Break to learn a new candidate.
                 break
-            if False:  # TODO Stop refinement
-                return epoch, curr_approx, cex_regions
 
     outer_pbar.close()
 
     tqdm.write(f"Cannot find a Lyapunov function in {max_epochs} iterations.")
-    return max_epochs, curr_approx, cex_regions
+    return CEGuSResult("EPOCH_LIMIT", max_epochs, curr_approx, cex_regions)
 
 
 def verify_lyapunov(
