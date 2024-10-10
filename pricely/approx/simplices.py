@@ -1,7 +1,7 @@
 from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_and  # type: ignore
 import numpy as np
 from scipy.spatial import Delaunay, QhullError
-from scipy.spatial.distance import cdist
+from scipy.spatial.distance import pdist
 from typing import Callable, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovCandidate
@@ -93,6 +93,10 @@ class AnyBoxConstant(DatasetApproxBase):
     @property
     def num_approxes(self) -> int:
         return len(self._x_values)
+    
+    @property
+    def domain_diameter(self) -> float:
+        return float(np.linalg.norm(self._x_ubs - self._x_lbs))
 
     def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
         return [Expr(vi) for vi in self._y_values[k]]
@@ -112,6 +116,10 @@ class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
             x_values: NDArrayFloat, u_values: NDArrayFloat, y_values: NDArrayFloat,
             lip: float) -> None:
         super().__init__(trans_barycentric, x_values, u_values, y_values, lip)
+
+    @property
+    def domain_diameter(self) -> float:
+        return float(np.max(pdist(self._x_values)))
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(

@@ -31,6 +31,10 @@ class ConstantApprox(PLocalApprox):
         return 1
     
     @property
+    def domain_diameter(self) -> float:
+        return float(np.linalg.norm(self._ub - self._lb))
+    
+    @property
     def x_witness(self) -> NDArrayFloat:
         dist_ub = np.sum(self._ub - self._x)
         dist_lb = np.sum(self._x - self._lb)
