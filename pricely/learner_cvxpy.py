@@ -24,7 +24,7 @@ class QuadraticLearner(PLyapunovLearner):
             "chebyshev": self._chebyshev,
             "volumetric": self._volumetric,
         }[method]
-        self._pd_mat = cp.Variable((x_dim, x_dim), name="P", PSD=True)
+        self._sym_mat = cp.Variable((x_dim, x_dim), name="P", symmetric=True)
         # FIXME: Need to pick different objectives in order to support exponential stability
         self._lambda = cp.Parameter(name="λ", value=0.0)  # XXX: Change to a variable for exponential stability
 
@@ -33,19 +33,20 @@ class QuadraticLearner(PLyapunovLearner):
         Find a good candidate in the polytope by choosing the analytic center
         See Section 4.1 in "Learning control lyapunov functions from counterexamples and demonstrations"
         """
-        yP = y @ self._pd_mat
+        xP = x @ self._sym_mat
+        xPx = cp.sum(cp.multiply(xP, x), axis=1)
+        yP = y @ self._sym_mat
         yPx = cp.sum(cp.multiply(yP, x), axis=1)
         # Find the analytic center
         constraints = [
-            self._pd_mat <= self._v_max,
-            self._pd_mat >= -self._v_max,
-            self._pd_mat - self._tol*np.eye(self._x_dim) >> 0,  # ensure x^T Px > 0
-            yPx <= 0,
+            self._sym_mat >= -self._v_max,
+            self._sym_mat <= self._v_max,
+            xPx >= 0,  # g_x(P) <= 0 in paper
+            yPx <= 0,  # h_x(P) <= 0 in paper
         ]
         obj = cp.Maximize(
-            cp.sum(cp.log(self._v_max - self._pd_mat)) +
-            cp.sum(cp.log(self._v_max + self._pd_mat)) + 
-            cp.sum(cp.log(-yPx)))
+            cp.sum(cp.log(self._v_max - self._sym_mat)) + cp.sum(cp.log(self._v_max + self._sym_mat)) +
+            cp.sum(cp.log(xPx)) + cp.sum(cp.log(-yPx)))
         return obj, constraints
 
     def _chebyshev(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat) -> Tuple[cp.Maximize, List[cp.Constraint]]:
@@ -75,7 +76,7 @@ class QuadraticLearner(PLyapunovLearner):
                 prob = cp.Problem(obj, cons)
                 prob.solve(solver)
                 if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-                    assert not np.any(np.isnan(self._pd_mat.value))
+                    assert not np.any(np.isnan(self._sym_mat.value))
                     return [prob.objective.value/len(x)]  # type: ignore
                 assert prob.status not in [cp.INFEASIBLE, cp.INFEASIBLE_INACCURATE]
             except cp.SolverError:
@@ -87,8 +88,8 @@ class QuadraticLearner(PLyapunovLearner):
         assert self._lambda.value is not None
 
         if self._u_dim == 0:
-            if self._pd_mat.value is None:
+            if self._sym_mat.value is None:
                 raise AttributeError("No candidate available.")
-            return QuadraticLyapunov(self._pd_mat.value, decay_rate=self._lambda.value)
+            return QuadraticLyapunov(self._sym_mat.value, decay_rate=self._lambda.value)
         else:
             raise NotImplementedError("Learning Lyapunov controller is not supported yet.")
