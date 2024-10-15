@@ -94,10 +94,14 @@ def viz_region_stats(x_roi, approx, cex_regions):
 
 def main(max_epochs: int=40, n_jobs: int=16):
     # import hscc2014_normalized_pendulum as mod
-    # import lcss2020_eq5 as mod
-    # import lcss2020_eq13 as mod
-    # import lcss2020_eq14 as mod
-    import lcss2020_eq15 as mod
+    # import fossil_nonpoly0 as mod
+    # import fossil_nonpoly1 as mod
+    # import fossil_nonpoly2 as mod
+    # import fossil_nonpoly3 as mod
+    # import fossil_poly1 as mod
+    # import fossil_poly2 as mod
+    # import fossil_poly3 as mod
+    import fossil_poly4 as mod
     # import traj_tracking_wheeled as mod
     # import neurips2022_van_der_pol as mod
     # import neurips2022_unicycle_following as mod

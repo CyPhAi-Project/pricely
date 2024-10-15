@@ -1,6 +1,9 @@
 """
-ODE from Equation (14) in "Formal Synthesis of Lyapunov Neural Networks"
-DOI: 10.1109/LCSYS.2020.3005328
+nonpoly_2 in "FOSSIL: A Software Tool for the Formal Synthesis of LyapunovFunctions and Barrier Certificates using Neural Networks"
+DOI: 10.1145/3447928.3456646
+
+Adapted from
+https://github.com/oxford-oxcav/fossil/blob/main/experiments/benchmarks/models.py
 """
 from dreal import Expression as Expr, Variable  # type: ignore
 import numpy as np
