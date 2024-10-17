@@ -64,25 +64,38 @@ class QuadraticLearner(PLyapunovLearner):
     def fit_loop(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat, max_epochs: int=1, **kwargs) -> Sequence[float]:
         obj, cons = self._build_prob(x, u, y)
 
-        for solver in [cp.CLARABEL, cp.SCS]:
+        FEASIBILITY_SOLVERS = [cp.CVXOPT, cp.CLARABEL]
+
+        fail_count = 0
+        for solver in FEASIBILITY_SOLVERS:
             try:
                 # Check feasibility first
                 feasibility = cp.Problem(cp.Maximize(0.0), cons)
                 feasibility.solve(solver)
-                if feasibility.status in [cp.INFEASIBLE, cp.INFEASIBLE_INACCURATE]:
+                if feasibility.status in [cp.INFEASIBLE]:
                     return []
+                elif feasibility.status in [cp.OPTIMAL]:
+                    break
+                else:
+                    raise RuntimeError(f"Unexpected status for feasibility check {feasibility.status}")
+            except cp.SolverError:
+                fail_count += 1
+        if fail_count == len(FEASIBILITY_SOLVERS):
+            raise RuntimeError(f"All CVXPY solvers have failed in feasbility check.")
 
+        for solver in [cp.CLARABEL, cp.SCS]:
+            try:
                 # Optimize the logarithmic barrier objective
                 prob = cp.Problem(obj, cons)
                 prob.solve(solver)
                 if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
                     assert not np.any(np.isnan(self._sym_mat.value))
                     return [prob.objective.value/len(x)]  # type: ignore
-                assert prob.status not in [cp.INFEASIBLE, cp.INFEASIBLE_INACCURATE]
+                else:
+                    raise RuntimeError(f"Unexpected status for optimization {prob.status}")
             except cp.SolverError:
                 pass
-
-        raise RuntimeError(f"All CVXPY solvers have failed.")
+        raise RuntimeError(f"All CVXPY solvers have failed in optimization.")
 
     def get_candidate(self) -> QuadraticLyapunov:
         assert self._lambda.value is not None
