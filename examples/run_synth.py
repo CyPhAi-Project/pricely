@@ -147,6 +147,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
                 learner, verifier, approx,
                 eps=1e-3,
                 max_epochs=max_epochs, max_iter_learn=1, n_jobs=n_jobs)
+        print(f"\nCEGuS Status: {status}")
     cegus_status = status
     cegus_time_usage = timer.elapsed
 
@@ -163,7 +164,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
         lya_expr = cand.lya_expr(x_vars)
         lya_decay_rate = cand.lya_decay_rate()
         level_ub, abs_x_ub = cand.find_sublevel_set_and_box(mod.X_ROI)
-        print(f"Decay rate of Lyapunov potential: {lya_decay_rate}")
+        print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
             mod.X_ROI,
