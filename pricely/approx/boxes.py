@@ -1,6 +1,6 @@
 from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_and  # type:ignore
 import numpy as np
-from typing import Callable, Sequence, Tuple, Union, overload
+from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox, split_region
 from pricely.utils import gen_equispace_regions
@@ -42,6 +42,9 @@ class ConstantApprox(PLocalApprox):
             return (self._x + self._ub) / 2
         else:
             return (self._lb + self._x) / 2
+
+    def in_domain_repr(self) -> Hashable:
+        return "Box", self._lb.tobytes(), self._ub.tobytes()
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(

@@ -2,7 +2,7 @@ from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_a
 import numpy as np
 from scipy.spatial import Delaunay, QhullError
 from scipy.spatial.distance import pdist
-from typing import Callable, Sequence, Tuple, Union, overload
+from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovCandidate
 
@@ -22,6 +22,9 @@ class DatasetApproxBase(PLocalApprox):
     @property
     def x_witness(self) -> NDArrayFloat:
         return self._x_values.mean(axis=0)
+    
+    def in_domain_repr(self) -> Hashable:
+        return "Box", self._x_lbs.tobytes(), self._x_ubs.tobytes()
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
@@ -44,6 +47,9 @@ class BarycentricMixin:
         ret = (self._t_mat @ (x_vars - self._r_vec)).tolist()
         ret.append(1.0 - sum(ret))
         return ret
+    
+    def in_simplex_repr(self) -> Hashable:
+        return "Simplex", self._t_mat.tobytes(), self._r_vec.tobytes()
 
     def in_simplex_pred(self, x_vars: Sequence[Variable]) -> Formula:
         barycentric_exprs = self._get_barycentric_exprs(x_vars)
@@ -62,6 +68,9 @@ class LinearInterpolaton(BarycentricMixin, DatasetApproxBase):
     @property
     def num_approxes(self) -> int:
         return 1
+
+    def in_domain_repr(self) -> Hashable:
+        return "Intersect", self.in_simplex_repr(), super().in_domain_repr()
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
@@ -120,6 +129,9 @@ class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
     @property
     def domain_diameter(self) -> float:
         return float(np.max(pdist(self._x_values)))
+
+    def in_domain_repr(self) -> Hashable:
+        return "Intersect", self.in_simplex_repr(), super().in_domain_repr()
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(

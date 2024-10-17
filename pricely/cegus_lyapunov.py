@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from signal import signal, SIGINT
 from tqdm import tqdm
-from typing import Callable, Literal, NamedTuple, Optional, Protocol, Sequence, Tuple
+from typing import Callable, Hashable, Literal, NamedTuple, Optional, Protocol, Sequence, Tuple
 import warnings
 
 
@@ -89,6 +89,10 @@ class PLocalApprox(Protocol):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def in_domain_repr(self) -> Hashable:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         raise NotImplementedError
 
@@ -159,7 +163,8 @@ def parallelizable_verify(
         verifier: PLyapunovVerifier,
         f_approx_j: PLocalApprox):
     signal(SIGINT, handler)
-    return j, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
+    reg_repr = f_approx_j.in_domain_repr()
+    return j, reg_repr, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
 
 
 class CEGuSResult(NamedTuple):
@@ -186,11 +191,8 @@ def cegus_lyapunov(
     curr_approx = init_approx
 
     outer_pbar = tqdm(
-        iter(range(1, max_epochs + 1)),
-        desc="Outer", ascii=True, postfix={
-            "#Valid Regions": 0, 
-            "#Total Regions": len(curr_approx), 
-            "#Samples": len(curr_approx.x_values)})
+        iter(range(max_epochs)),
+        desc="CEGuS Loop", ascii=True, leave=True, position=0, postfix={"#Samples": len(curr_approx.x_values)})
     cex_regions = []
     obj_values = []
 
@@ -200,6 +202,8 @@ def cegus_lyapunov(
     u_values = curr_approx.u_values[filter_idx]
     y_values = curr_approx.y_values[filter_idx]
     for epoch in outer_pbar:
+        # NOTE x_values is filtered 
+        outer_pbar.set_postfix({"#Samples for learner": len(x_values)})
         # Learn a new candidate
         objs = learner.fit_loop(
             x_values, u_values, y_values,
@@ -212,33 +216,62 @@ def cegus_lyapunov(
         cand = learner.get_candidate()
         verifier.set_lyapunov_candidate(cand)
         stop_refine = False
+        verified_regions = set()
+
+        refinement_pbar = tqdm(
+            desc=f"Refinement Loop",
+            ascii=True, leave=None, position=1)
         while True:
             if stop_refine:
-                tqdm.write("Current candidate can neither be proven nor falsified.")
+                refinement_pbar.set_postfix({
+                    "#Valid Regions": "?",
+                    "#Total Regions": len(curr_approx),
+                    "#Samples": len(curr_approx.x_values)})
+                tqdm.write("Current candidate is neither ε-provable nor falsified.")
                 return CEGuSResult("PRECISION_LIMIT", epoch, curr_approx, cex_regions)
 
             num_timeouts = 0
             cex_regions.clear()
             with Pool(n_jobs) as p:
-                future_list = [p.apply_async(
-                    func=parallelizable_verify,
-                    args=((j, verifier, curr_approx[j])))
-                    for j in range(len(curr_approx))]
+                new_verified_regions = set()
+                if len(verified_regions) <= len(curr_approx) // 4:
+                    future_list = [p.apply_async(
+                            func=parallelizable_verify,
+                            args=((j, verifier, curr_approx[j])))
+                        for j in range(len(curr_approx))]
+                else:
+                    # Reuse verified regions only when it is worthwhile.
+                    future_list = []
+                    for j in tqdm(range(len(curr_approx)),
+                                  desc="Check cache", ascii=True, leave=None, position=2):
+                        reg_repr = curr_approx[j].in_domain_repr()
+                        if reg_repr in verified_regions:
+                            new_verified_regions.add(reg_repr)
+                        else:
+                            future_list.append(p.apply_async(
+                                func=parallelizable_verify,
+                                args=((j, verifier, curr_approx[j]))))
+
                 for future in tqdm(future_list,
-                                   desc=f"Verify at {epoch}it", ascii=True, leave=False):
+                                   desc=f"Verify", ascii=True, leave=None, position=2):
                     try:
-                        j, box, diam = future.get(timeout_per_job)
-                        if box is not None:
+                        j, reg_repr, box, diam = future.get(timeout_per_job)
+                        if box is None:
+                            new_verified_regions.add(reg_repr)
+                        else:
                             stop_refine = stop_refine or (diam <= diam_lb)
                             cex_regions.append((j, box))
                     except TimeoutError:
                         num_timeouts += 1
+                verified_regions.clear()
+                verified_regions = new_verified_regions
 
             if num_timeouts > 0:
-                tqdm.write(f'Timeout for {num_timeouts} regions at {epoch}it')
-            outer_pbar.set_postfix({
-                "#Valid Regions": len(curr_approx)-len(cex_regions),
+                tqdm.write(f'Regional verifier times out for {num_timeouts} regions at {epoch}it')
+            refinement_pbar.set_postfix({
                 "#Total Regions": len(curr_approx),
+                "#Valid Regions": len(curr_approx) - len(cex_regions),
+                "#VC Queries": len(future_list),
                 "#Samples": len(curr_approx.x_values)})
             if len(cex_regions) == 0:
                 assert num_timeouts == 0
@@ -259,6 +292,7 @@ def cegus_lyapunov(
                     np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
                 # Found true counterexamples. Break to learn a new candidate.
                 break
+            refinement_pbar.update(1)
 
     outer_pbar.close()
 
