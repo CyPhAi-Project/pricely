@@ -12,6 +12,8 @@ from pricely.approx.simplices import SimplicialComplex
 from pricely.cegus_lyapunov import PApproxDynamic
 from pricely.utils import gen_equispace_regions, gen_lip_bbox
 
+NCOLS = 120
+
 
 def add_level_sets(
         ax: Axes, lya_func: Callable[[np.ndarray], np.ndarray],
@@ -122,7 +124,7 @@ def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
         result_iter = tqdm(
             p.map(est_lip_lb, regions),
             desc=f"Validate Lipshitz Constants",
-            total=len(regions), ascii=True)
+            total=len(regions), ascii=True, ncols=NCOLS)
         lip_lbs = np.fromiter(result_iter, dtype=float)
 
     min_lb_idx = np.argmin(lip_lbs)

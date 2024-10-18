@@ -18,6 +18,10 @@ class QuadraticLyapunov(PLyapunovCandidate):
             assert ctrl_mat.shape[1] == pd_mat.shape[0]
             self._ctrl_mat = ctrl_mat
 
+    def __str__(self) -> str:
+        with np.printoptions(floatmode='unique'):
+            return "V(x) = ½ x·(Ax) with A =\n" + str(self._pd_mat)
+
     def u_dim(self) -> int:
         return self._ctrl_mat.shape[0]
 

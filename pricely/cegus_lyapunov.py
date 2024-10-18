@@ -9,6 +9,7 @@ from tqdm import tqdm
 from typing import Callable, Hashable, Literal, NamedTuple, Optional, Protocol, Sequence, Tuple
 import warnings
 
+NCOLS = 120
 
 NDArrayFloat = NDArray[np.float_]
 NDArrayIndex = NDArray[np.int_]
@@ -192,7 +193,8 @@ def cegus_lyapunov(
 
     outer_pbar = tqdm(
         iter(range(max_epochs)),
-        desc="CEGuS Loop", ascii=True, leave=True, position=0, postfix={"#Samples": len(curr_approx.x_values)})
+        desc="CEGuS Loop", ascii=True, leave=True, position=0, ncols=NCOLS,
+        postfix={"#Samples": len(curr_approx.x_values)})
     cex_regions = []
     obj_values = []
 
@@ -220,7 +222,7 @@ def cegus_lyapunov(
 
         refinement_pbar = tqdm(
             desc=f"Refinement Loop",
-            ascii=True, leave=None, position=1)
+            ascii=True, leave=None, position=1, ncols=NCOLS)
         while True:
             if stop_refine:
                 refinement_pbar.set_postfix({
@@ -243,7 +245,7 @@ def cegus_lyapunov(
                     # Reuse verified regions only when it is worthwhile.
                     future_list = []
                     for j in tqdm(range(len(curr_approx)),
-                                  desc="Check cache", ascii=True, leave=None, position=2):
+                                  desc="Check cache", ascii=True, leave=None, position=2, ncols=NCOLS):
                         reg_repr = curr_approx[j].in_domain_repr()
                         if reg_repr in verified_regions:
                             new_verified_regions.add(reg_repr)
@@ -253,7 +255,7 @@ def cegus_lyapunov(
                                 args=((j, verifier, curr_approx[j]))))
 
                 for future in tqdm(future_list,
-                                   desc=f"Verify", ascii=True, leave=None, position=2):
+                                   desc=f"Verify", ascii=True, leave=None, position=2, ncols=NCOLS):
                     try:
                         j, reg_repr, box, diam = future.get(timeout_per_job)
                         if box is None:
@@ -435,7 +437,7 @@ def get_unverified_regions(
             p.starmap(parallelizable_split,
                       ((x_regions[j], box_j) for j, box_j in sat_regions)),
             desc=f"Validate Lipshitz Constants",
-            total=len(sat_regions), ascii=True, leave=False)
+            total=len(sat_regions), ascii=True, leave=False, ncols=NCOLS)
 
         for old_region, cex_region in result_iter:  # type: ignore
             new_regions.append(old_region)
