@@ -47,9 +47,6 @@ class BarycentricMixin:
         ret = (self._t_mat @ (x_vars - self._r_vec)).tolist()
         ret.append(1.0 - sum(ret))
         return ret
-    
-    def in_simplex_repr(self) -> Hashable:
-        return "Simplex", self._t_mat.tobytes(), self._r_vec.tobytes()
 
     def in_simplex_pred(self, x_vars: Sequence[Variable]) -> Formula:
         barycentric_exprs = self._get_barycentric_exprs(x_vars)
@@ -70,7 +67,7 @@ class LinearInterpolaton(BarycentricMixin, DatasetApproxBase):
         return 1
 
     def in_domain_repr(self) -> Hashable:
-        return "Intersect", self.in_simplex_repr(), super().in_domain_repr()
+        raise NotImplementedError("TODO")
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
@@ -123,15 +120,17 @@ class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
     def __init__(
             self, trans_barycentric: NDArrayFloat,
             x_values: NDArrayFloat, u_values: NDArrayFloat, y_values: NDArrayFloat,
+            hash_key: Hashable,
             lip: float) -> None:
         super().__init__(trans_barycentric, x_values, u_values, y_values, lip)
+        self._hash_key = hash_key
 
     @property
     def domain_diameter(self) -> float:
         return float(np.max(pdist(self._x_values)))
 
     def in_domain_repr(self) -> Hashable:
-        return "Intersect", self.in_simplex_repr(), super().in_domain_repr()
+        return "Simplex", self._hash_key
 
     def in_domain_pred(self, x_vars: Sequence[Variable]) -> Formula:
         return logical_and(
@@ -234,6 +233,7 @@ class SimplicialComplex(PApproxDynamic):
             self.x_values[vertex_idxs],
             self.u_values[vertex_idxs],
             self.y_values[vertex_idxs],
+            hash_key=self.x_values[np.sort(vertex_idxs)].tobytes(),
             lip=self._lips[item])
 
     def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
