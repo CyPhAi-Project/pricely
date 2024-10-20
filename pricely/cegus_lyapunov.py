@@ -37,7 +37,7 @@ class PLyapunovCandidate(Protocol):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def find_level_ub(self, x_roi: NDArrayFloat) -> Tuple[float, ArrayLike]:
+    def find_level_ub(self, x_roi: NDArrayFloat) -> float:
         raise NotImplementedError
 
 
