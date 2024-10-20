@@ -186,15 +186,10 @@ class SMTVerifier(PLyapunovVerifier):
             abs_x_lb_conds = (abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
         region_pred_list.extend(abs_x_lb_conds)
 
-        lya_cand_level_ub, abs_x_ub = \
-            lya.find_sublevel_set_and_box(self._x_roi)
-        if np.isscalar(abs_x_ub):
-            abs_x_ub_conds = (abs(x) <= Expr(abs_x_ub) for x in x_vars)
-        else:
-            abs_x_ub = np.asfarray(abs_x_ub)
-            assert len(abs_x_ub) == len(x_vars)
-            abs_x_ub_conds = (abs(x) <= Expr(ub) for x, ub in zip(x_vars, abs_x_ub))
-        region_pred_list.extend(abs_x_ub_conds)
+        x_roi_lb_conds = (x >= Expr(lb) for x, lb in zip(x_vars, self._x_roi[0]))
+        region_pred_list.extend(x_roi_lb_conds)
+        x_roi_ub_conds = (x <= Expr(ub) for x, ub in zip(x_vars, self._x_roi[1]))
+        region_pred_list.extend(x_roi_ub_conds)
 
         if self._norm_lb > 0.0 or np.isfinite(self._norm_ub):
             norm_sq = sum(x**2 for x in x_vars)
@@ -203,6 +198,7 @@ class SMTVerifier(PLyapunovVerifier):
             region_pred_list.append(norm_lb_cond)
             region_pred_list.append(norm_ub_cond)
 
+        lya_cand_level_ub = lya.find_level_ub(self._x_roi)
         sublevel_set_cond = (lya.lya_expr(x_vars) <= Expr(lya_cand_level_ub))
         region_pred_list.append(sublevel_set_cond)
 

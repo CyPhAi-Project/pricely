@@ -83,6 +83,7 @@ def check_lyapunov_sublevel_set(
         abs_range_conds.extend(
             abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
 
+    raise NotImplementedError("Computing a bounding box of the sublevel set is not supported.")
     if np.isscalar(abs_x_ub):
         abs_range_conds.extend(abs(x) <= Expr(abs_x_ub) for x in x_vars)
     else:

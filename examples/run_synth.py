@@ -163,7 +163,6 @@ def main(max_epochs: int=40, n_jobs: int=16):
         cand = learner.get_candidate()
         lya_expr = cand.lya_expr(x_vars)
         lya_decay_rate = cand.lya_decay_rate()
-        level_ub, abs_x_ub = cand.find_sublevel_set_and_box(mod.X_ROI)
         print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
@@ -179,16 +178,6 @@ def main(max_epochs: int=40, n_jobs: int=16):
             print("Learned candidate is NOT a Lyapunov function for ROI.")
             print(f"Counterexample:\n{result}")
         validation = (result is None)
-
-        result = check_lyapunov_sublevel_set(
-            x_vars, dxdt_exprs, lya_expr, lya_decay_rate,
-            level_ub, mod.ABS_X_LB, abs_x_ub, config=config)
-        if result is None:
-            print("The Basin of Attraction can cover the entire ROI.")
-        else:
-            print("Cannot prove if the Basin of Attraction covers the entire ROI.")
-        cover_roi = (result is None)
-
 
     fig_err = viz_region_stats(mod.X_ROI, last_approx, cex_regions)
     f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
