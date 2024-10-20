@@ -14,13 +14,14 @@ from pricely.learner_cvxpy import QuadraticLearner
 from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set
 from pricely.verifier_dreal import SMTVerifier, pretty_sub
 
+NCOLS = 120
 
 OUT_DIR = Path(f"out/{str(date.today())}")
 OUT_DIR.mkdir(exist_ok=True)
 
 
 def viz_regions_2d(ax, mod, last_approx, cex_regions):
-    print(" Plotting verified regions ".center(80, "="))
+    print(" Plotting verified regions ".center(NCOLS, "="))
     # Calculate the axis-aligned bounding box
     # ax.set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
     # ax.set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
@@ -51,10 +52,10 @@ def viz_basin_2d(ax, mod, cand: QuadraticLyapunov):
     x_roi = mod.X_ROI
     # Draw Basin of Attraction
     if hasattr(mod, "NORM_UB"):
-        l_min = np.linalg.eigvalsh(cand._pd_mat)[0]
+        l_min = np.linalg.eigvalsh(cand._sym_mat)[0]
         level_ub = 0.5*l_min*(mod.NORM_UB**2)
     else:
-        p_inv = np.linalg.inv(cand._pd_mat)
+        p_inv = np.linalg.inv(cand._sym_mat)
         level_ub = 0.5*(x_roi[1]**2 / p_inv.diagonal()).min()
     add_level_sets(ax, cand.lya_values, level_ub, colors="b")
 
@@ -63,7 +64,7 @@ def viz_region_stats(x_roi, approx, cex_regions):
     x_dim = x_roi.shape[1]
 
     assert isinstance(approx, SimplicialComplex)
-    print(" Plotting volumes of all regions in descending order".center(80, "="))
+    print(" Plotting volumes of all regions in descending order".center(NCOLS, "="))
     fig = plt.figure()
     fig.suptitle("Volumes of regions")
     ax = fig.add_subplot(211)
@@ -111,11 +112,11 @@ def main(max_epochs: int=40, n_jobs: int=16):
     timer = CatchTime()
 
     init_part = [5]*mod.X_DIM
-    print(" Validate local Lipschitz constants ".center(80, "="))
+    print(" Validate local Lipschitz constants ".center(NCOLS, "="))
     with timer:
         validate_lip_bbox(mod, init_part)
 
-    print(" Generate initial samples and cover ".center(80, "="))
+    print(" Generate initial samples and cover ".center(NCOLS, "="))
     with timer:
         axis_cuts = [
             np.linspace(start=bnd[0], stop=bnd[1], num=cuts+1)
@@ -135,7 +136,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
     config.precision = 1e-7
     config.number_of_jobs = 1
 
-    print(" Run CEGuS ".center(80, "="))
+    print(" Run CEGuS ".center(NCOLS, "="))
     with timer:
         learner = QuadraticLearner(mod.X_DIM, v_max=1e8)
         verifier = SMTVerifier(
@@ -148,11 +149,14 @@ def main(max_epochs: int=40, n_jobs: int=16):
                 eps=1e-3,
                 max_epochs=max_epochs, max_iter_learn=1, n_jobs=n_jobs)
         print(f"\nCEGuS Status: {status}")
+    if status != "NO_CANDIDATE":
+        cand = learner.get_candidate()
+        print("Last candidate (possibly with precision loss):\n", str(cand))
     cegus_status = status
     cegus_time_usage = timer.elapsed
 
 
-    print(" Validate learned Lyapunov candidate ".center(80, "="))
+    print(" Validate learned Lyapunov candidate ".center(NCOLS, "="))
     validation = "N/A"
     cover_roi = "N/A"
     if cegus_status == "NO_CANDIDATE":
