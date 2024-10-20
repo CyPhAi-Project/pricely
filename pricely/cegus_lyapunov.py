@@ -138,12 +138,11 @@ def handler(signumber, frame):
 
 
 def parallelizable_verify(
-        j: int,
         verifier: PLyapunovVerifier,
         f_approx_j: PLocalApprox):
     signal(SIGINT, handler)
     reg_repr = f_approx_j.in_domain_repr()
-    return j, reg_repr, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
+    return reg_repr, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
 
 
 class CEGuSResult(NamedTuple):
@@ -215,9 +214,9 @@ def cegus_lyapunov(
             with Pool(n_jobs) as p:
                 new_verified_regions = set()
                 if len(verified_regions) <= len(curr_approx) // 4:
-                    future_list = [p.apply_async(
+                    future_list = [(j, p.apply_async(
                             func=parallelizable_verify,
-                            args=((j, verifier, curr_approx[j])))
+                            args=((verifier, curr_approx[j]))))
                         for j in range(len(curr_approx))]
                 else:
                     # Reuse verified regions only when it is worthwhile.
@@ -228,14 +227,14 @@ def cegus_lyapunov(
                         if reg_repr in verified_regions:
                             new_verified_regions.add(reg_repr)
                         else:
-                            future_list.append(p.apply_async(
+                            future_list.append((j, p.apply_async(
                                 func=parallelizable_verify,
-                                args=((j, verifier, curr_approx[j]))))
+                                args=((verifier, curr_approx[j])))))
 
-                for future in tqdm(future_list,
+                for j, future in tqdm(future_list,
                                    desc=f"Verify", ascii=True, leave=None, position=2, ncols=NCOLS):
                     try:
-                        j, reg_repr, box, diam = future.get(timeout_per_job)
+                        reg_repr, box, diam = future.get(timeout_per_job)
                         if box is None:
                             new_verified_regions.add(reg_repr)
                         else:
@@ -243,6 +242,9 @@ def cegus_lyapunov(
                             cex_regions.append((j, box))
                     except TimeoutError:
                         num_timeouts += 1
+                        cex = curr_approx[j].x_witness
+                        box = np.row_stack((cex, cex))
+                        cex_regions.append((j, box))
                 verified_regions.clear()
                 verified_regions = new_verified_regions
 
