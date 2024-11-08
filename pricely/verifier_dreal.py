@@ -100,9 +100,9 @@ class SMTVerifier(PLyapunovVerifier):
         ## Filter samples outside of ROI
         ## TODO Maybe consider basin of attraction instead of ROI
         return np.logical_and.reduce((
-            abs(x_values).min(axis=1) >= self._abs_x_lb,
+            np.max(np.abs(x_values) >= self._abs_x_lb, axis=1),
             np.linalg.norm(x_values, axis=1) >= self._norm_lb,
-            np.linalg.norm(x_values, axis=1) <=  self._norm_ub))
+            np.linalg.norm(x_values, axis=1) <= self._norm_ub))
 
     def set_lyapunov_candidate(
             self, cand: PLyapunovCandidate):
@@ -177,14 +177,15 @@ class SMTVerifier(PLyapunovVerifier):
 
         # Add constraints of the region
         region_pred_list = []
-        ## Add the region of interest X
+        # Add the region of interest X
         if np.isscalar(self._abs_x_lb):
             abs_x_lb_conds = (abs(x) >= Expr(self._abs_x_lb) for x in x_vars)
         else:
             abs_x_lb = np.asfarray(self._abs_x_lb)
             assert len(abs_x_lb) == len(x_vars)
             abs_x_lb_conds = (abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
-        region_pred_list.extend(abs_x_lb_conds)
+        exclude_rect = logical_or(*abs_x_lb_conds)
+        region_pred_list.append(exclude_rect)
 
         x_roi_lb_conds = (x >= Expr(lb) for x, lb in zip(x_vars, self._x_roi[0]))
         region_pred_list.extend(x_roi_lb_conds)

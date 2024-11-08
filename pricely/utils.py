@@ -43,13 +43,14 @@ def check_lyapunov_roi(
         assert len(abs_x_lb) == len(x_vars)
         abs_lb_conds.extend(
             abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
+    exclude_rect = logical_or(*abs_lb_conds)
     if norm_lb > 0.0 or np.isfinite(norm_ub):
         norm_sq = sum(x**2 for x in x_vars)
         norm_conds = [norm_sq >= norm_lb**2, norm_sq <= norm_ub**2]
     else:
         norm_conds = []
 
-    in_roi_pred = logical_and(*lb_conds, *ub_conds, *abs_lb_conds, *norm_conds)
+    in_roi_pred = logical_and(*lb_conds, *ub_conds, exclude_rect, *norm_conds)
 
     neg_lya_cond = _gen_neg_lya_cond(x_vars, dxdt_exprs, lya_expr, lya_decay_rate)
     smt_query = logical_and(in_roi_pred, neg_lya_cond)
