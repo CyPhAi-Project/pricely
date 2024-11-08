@@ -18,7 +18,7 @@ X_ROI = np.array([
     [+NORM_UB]*X_DIM  # Upper bounds
 ])
 assert X_ROI.shape == (2, X_DIM)
-ABS_X_LB = 2**-4
+ABS_X_LB = NORM_LB/np.sqrt(X_DIM)
 
 
 def f_bbox(q: np.ndarray) -> np.ndarray:
