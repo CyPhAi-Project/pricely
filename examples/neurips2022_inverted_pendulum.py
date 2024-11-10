@@ -3,22 +3,6 @@ import numpy as np
 from typing import Sequence
 
 
-def known_lya_values(x_values: np.ndarray) -> np.ndarray:
-    W1_T = np.asfarray([
-        [+0.03331, +0.03467, +2.12564, -0.39925, +0.12885, +0.95375],
-        [-0.03113, -0.01892, +0.02354, -0.10678, -0.32245, +0.01298]
-    ])
-    b1 = np.asfarray([-0.48061, 0.88048, 0.86448, -0.87253, 0.81866, -0.26619])
-    W2 = np.asfarray([
-        [-0.33862, 0.65177, -0.52607, 0.23062, -0.04802, 0.66825]
-    ])
-    b2 = np.asfarray([0.22032])
-    linear1 = x_values @ W1_T + b1
-    hidden1 = np.tanh(linear1)
-    linear2 = hidden1 @ W2.T + b2
-    return np.tanh(linear2).squeeze()
-
-
 G = 9.81  # m/s^2
 M = 0.15  # kg
 L = 0.5  # m
@@ -88,3 +72,25 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
     # Convex upper bound for the Forbenious norm
     lip_ub = np.sqrt(((M*L**2)**2 + (20*5.27055*max_du)**2 + 0.1**2 + (M*G*L + 20*23.28632*max_du)**2)) / (M*L**2)
     return np.full(len(x_regions), fill_value=lip_ub)
+
+
+def nnet_lya(x_values: np.ndarray) -> np.ndarray:
+    W1_T = np.asfarray([
+        [+0.03331, +0.03467, +2.12564, -0.39925, +0.12885, +0.95375],
+        [-0.03113, -0.01892, +0.02354, -0.10678, -0.32245, +0.01298]
+    ])
+    b1 = np.asfarray([-0.48061, 0.88048, 0.86448, -0.87253, 0.81866, -0.26619])
+    W2 = np.asfarray([
+        [-0.33862, 0.65177, -0.52607, 0.23062, -0.04802, 0.66825]
+    ])
+    b2 = np.asfarray([0.22032])
+    linear1 = x_values @ W1_T + b1
+    hidden1 = np.tanh(linear1)
+    linear2 = hidden1 @ W2.T + b2
+    return np.tanh(linear2).squeeze()
+
+
+def quad_lya(X: np.ndarray) -> np.ndarray:
+    P = np.asfarray([[9601880.839207353, 2108259.5872321003],
+                     [2108259.5872321003, 482706.94878913707]])
+    return 0.5*np.sum(np.multiply(X @ P, X), axis=1)
