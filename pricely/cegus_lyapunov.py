@@ -14,6 +14,10 @@ NDArrayIndex = NDArray[np.int_]
 
 class PLyapunovCandidate(Protocol):
     @abc.abstractmethod
+    def __copy__(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
         raise NotImplementedError
 
@@ -206,7 +210,7 @@ def cegus_lyapunov(
                     "#Valid Regions": "?",
                     "#Total Regions": len(curr_approx),
                     "#Samples": len(curr_approx.x_values)})
-                tqdm.write("Current candidate is neither ε-provable nor falsified.")
+                tqdm.write("Current candidate is neither δ-provable nor falsified.")
                 return CEGuSResult("PRECISION_LIMIT", epoch, curr_approx, cex_regions)
 
             num_timeouts = 0

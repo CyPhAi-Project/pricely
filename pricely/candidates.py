@@ -20,6 +20,12 @@ class QuadraticLyapunov(PLyapunovCandidate):
             assert ctrl_mat.shape[1] == sym_mat.shape[0]
             self._ctrl_mat = ctrl_mat
 
+    def __copy__(self):
+        return QuadraticLyapunov(
+            sym_mat=self._sym_mat.copy(),
+            ctrl_mat=self._ctrl_mat.copy(),
+            decay_rate=self._lambda)
+
     def __str__(self) -> str:
         with np.printoptions(floatmode='unique'):
             return "V(x) = ½ x·(Ax) with A =\n" + str(self._sym_mat)
