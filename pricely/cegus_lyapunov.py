@@ -160,7 +160,7 @@ def cegus_lyapunov(
         learner: PLyapunovLearner,
         verifier: PLyapunovVerifier,
         init_approx: PApproxDynamic,
-        eps: float = 1e-6,
+        delta: float = 1e-6,
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5,
@@ -168,7 +168,7 @@ def cegus_lyapunov(
         timeout_per_job: Optional[float] = 30.0) -> CEGuSResult:
     assert max_epochs > 0
 
-    diam_lb = eps * np.sqrt(2.0 + 2.0 / verifier.x_dim) / 2.0
+    diam_lb = delta * np.sqrt(2.0 + 2.0 / verifier.x_dim) / 2.0
     # Initial set cover and sampled values
     curr_approx = init_approx
 

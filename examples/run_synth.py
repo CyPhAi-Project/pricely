@@ -146,7 +146,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
         status, last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
-                eps=1e-3,
+                delta=1e-4,
                 max_epochs=max_epochs, max_iter_learn=1, n_jobs=n_jobs)
         print(f"\nCEGuS Status: {status}")
     if status != "NO_CANDIDATE":
@@ -182,6 +182,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
             print("Learned candidate is NOT a Lyapunov function for ROI.")
             print(f"Counterexample:\n{result}")
         validation = (result is None)
+
 
     fig_err = viz_region_stats(mod.X_ROI, last_approx, cex_regions)
     f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
