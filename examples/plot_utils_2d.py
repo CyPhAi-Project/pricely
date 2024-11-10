@@ -19,8 +19,8 @@ def add_level_sets(
         ax: Axes, lya_func: Callable[[np.ndarray], np.ndarray],
         level_ub: float=np.inf,
         num_steps: int = 250,
-        colors: str = "r"
-        ):
+        colors: str = "r",
+        linestyles: str = "solid"):
     x_lim, y_lim = ax.get_xlim(), ax.get_ylim()
     x_arr = np.linspace(*x_lim, num_steps)
     y_arr = np.linspace(*y_lim, num_steps)
@@ -36,7 +36,7 @@ def add_level_sets(
         lya_values = lya_func(sel_values)
         levels=np.linspace(0.0, np.min(lya_values), 5)
 
-    ax.contour(X, Y, Z, levels, colors=colors)
+    ax.contour(X, Y, Z, levels, colors=colors, linestyles=linestyles)
 
 
 def add_valid_regions(ax: Axes, approx: PApproxDynamic, cex_regions):
