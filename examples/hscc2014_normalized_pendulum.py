@@ -9,13 +9,13 @@ from typing import Sequence
 
 
 X_DIM = 2
-NORM_UB = 1.0
-# NORM_LB = 0.01
-X_ROI = np.array([
-    [-NORM_UB, -NORM_UB],  # Lower bounds
-    [+NORM_UB, +NORM_UB]  # Upper bounds
+X_NORM_UB = 1.0
+# X_NORM_LB = 0.01
+X_LIM = np.array([
+    [-X_NORM_UB, -X_NORM_UB],  # Lower bounds
+    [+X_NORM_UB, +X_NORM_UB]  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
+assert X_LIM.shape == (2, X_DIM)
 ABS_X_LB = 2**-6
 
 

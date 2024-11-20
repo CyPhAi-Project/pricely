@@ -117,7 +117,7 @@ class CatchTime:
 def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
     est_lip_lb = gen_lip_bbox(mod.X_DIM, mod.f_bbox)
 
-    regions = gen_equispace_regions(parts, mod.X_ROI)
+    regions = gen_equispace_regions(parts, mod.X_LIM)
 
     lip_values = mod.calc_lip_bbox(regions)
     with Pool(n_jobs) as p:

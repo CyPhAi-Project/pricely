@@ -10,14 +10,14 @@ from typing import Sequence
 
 
 X_DIM = 2
-X_ROI = np.array([
+X_LIM = np.array([
     [-1.25, -1.25],  # Lower bounds
     [+1.25, +1.25]  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
+assert X_LIM.shape == (2, X_DIM)
 ABS_X_LB = 0.03125
-NORM_LB = 0.2
-NORM_UB = 1.2
+X_NORM_LB = 0.2
+X_NORM_UB = 1.2
 
 MU = 1.0
 

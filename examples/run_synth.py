@@ -25,43 +25,43 @@ def viz_regions_2d(ax, mod, last_approx, cex_regions):
     # Calculate the axis-aligned bounding box
     # ax.set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
     # ax.set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
-    x_roi = mod.X_ROI
+    x_lim = mod.X_LIM
     abs_x_lb = mod.ABS_X_LB
-    ax.set_xlim(*(1.0625*x_roi[:, 0]))
-    ax.set_ylim(*(1.0625*x_roi[:, 1]))
+    ax.set_xlim(*(1.0625*x_lim[:, 0]))
+    ax.set_ylim(*(1.0625*x_lim[:, 1]))
 
     add_valid_regions(
         ax, last_approx, cex_regions)
     # ax.add_patch(Rectangle(
     #     (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
 
-    if hasattr(mod, "NORM_LB"):
-        ax.add_patch(Circle((0, 0), mod.NORM_LB, color='r', fill=False))
+    if hasattr(mod, "X_NORM_LB"):
+        ax.add_patch(Circle((0, 0), mod.X_NORM_LB, color='r', fill=False))
     else:
         ax.add_patch(Rectangle(
             (-abs_x_lb, -abs_x_lb), 2*abs_x_lb, 2*abs_x_lb, color='r', fill=False))
 
-    if hasattr(mod, "NORM_UB"):
-        ax.add_patch(Circle((0, 0), mod.NORM_UB, color='r', fill=False))
+    if hasattr(mod, "X_NORM_UB"):
+        ax.add_patch(Circle((0, 0), mod.X_NORM_UB, color='r', fill=False))
     else:
         ax.add_patch(Rectangle(
-            (x_roi[0][0], x_roi[0][1]), x_roi[1][0]-x_roi[0][0], x_roi[1][1]-x_roi[0][1], color='r', fill=False))
+            (x_lim[0][0], x_lim[0][1]), x_lim[1][0]-x_lim[0][0], x_lim[1][1]-x_lim[0][1], color='r', fill=False))
 
 
 def viz_basin_2d(ax, mod, cand: QuadraticLyapunov):
-    x_roi = mod.X_ROI
+    x_lim = mod.X_LIM
     # Draw Basin of Attraction
-    if hasattr(mod, "NORM_UB"):
+    if hasattr(mod, "X_NORM_UB"):
         l_min = np.linalg.eigvalsh(cand._sym_mat)[0]
-        level_ub = 0.5*l_min*(mod.NORM_UB**2)
+        level_ub = 0.5*l_min*(mod.X_NORM_UB**2)
     else:
         p_inv = np.linalg.inv(cand._sym_mat)
-        level_ub = 0.5*(x_roi[1]**2 / p_inv.diagonal()).min()
+        level_ub = 0.5*(x_lim[1]**2 / p_inv.diagonal()).min()
     add_level_sets(ax, cand.lya_values, level_ub, colors="b")
 
 
-def viz_region_stats(x_roi, approx, cex_regions):
-    x_dim = x_roi.shape[1]
+def viz_region_stats(x_lim, approx, cex_regions):
+    x_dim = x_lim.shape[1]
 
     assert isinstance(approx, SimplicialComplex)
     print(" Plotting volumes of all regions in descending order".center(NCOLS, "="))
@@ -120,11 +120,11 @@ def main(max_epochs: int=40, n_jobs: int=16):
     with timer:
         axis_cuts = [
             np.linspace(start=bnd[0], stop=bnd[1], num=cuts+1)
-            for bnd, cuts in zip(mod.X_ROI.T, init_part)
+            for bnd, cuts in zip(mod.X_LIM.T, init_part)
         ]
         x_values = cartesian_prod(*axis_cuts)
         approx = SimplicialComplex.from_autonomous(
-            x_roi=mod.X_ROI,
+            x_lim=mod.X_LIM,
             x_values=x_values,
             f_bbox=mod.f_bbox,
             lip_bbox=mod.calc_lip_bbox)
@@ -140,9 +140,9 @@ def main(max_epochs: int=40, n_jobs: int=16):
     with timer:
         learner = QuadraticLearner(mod.X_DIM, v_max=1e8)
         verifier = SMTVerifier(
-            x_roi=mod.X_ROI, abs_x_lb=mod.ABS_X_LB,
-            norm_lb=getattr(mod, "NORM_LB", 0.0),
-            norm_ub=getattr(mod, "NORM_UB", np.inf), config=config)
+            x_lim=mod.X_LIM, abs_x_lb=mod.ABS_X_LB,
+            x_norm_lb=getattr(mod, "X_NORM_LB", 0.0),
+            x_norm_ub=getattr(mod, "X_NORM_UB", np.inf), config=config)
         status, last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
@@ -170,11 +170,11 @@ def main(max_epochs: int=40, n_jobs: int=16):
         print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
-            mod.X_ROI,
+            mod.X_LIM,
             lya_decay_rate,
             mod.ABS_X_LB,
-            norm_lb=getattr(mod, "NORM_LB", 0.0),
-            norm_ub=getattr(mod, "NORM_UB", np.inf),
+            x_norm_lb=getattr(mod, "X_NORM_LB", 0.0),
+            x_norm_ub=getattr(mod, "X_NORM_UB", np.inf),
             config=config)
         if result is None:
             print("Learned candidate is a valid Lyapunov function for ROI.")
@@ -184,7 +184,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
         validation = (result is None)
 
 
-    fig_err = viz_region_stats(mod.X_ROI, last_approx, cex_regions)
+    fig_err = viz_region_stats(mod.X_LIM, last_approx, cex_regions)
     f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
     f_path = OUT_DIR / f_name
     fig_err.savefig(f_path)  # type: ignore

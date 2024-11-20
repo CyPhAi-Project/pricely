@@ -6,11 +6,11 @@ from pricely.cegus_lyapunov import NDArrayFloat
 from pricely.utils import cartesian_prod
 
 
-def gen_stars(x_roi: NDArrayFloat, hint_part: Sequence[int]) -> Tuple[NDArrayFloat, NDArrayFloat]:
-    assert x_roi.shape == (2, len(hint_part))
-    assert np.all(x_roi[0] < x_roi[1])
-    x_dim = x_roi.shape[1]
-    x_lb, x_ub = x_roi[0], x_roi[1]
+def gen_stars(x_lim: NDArrayFloat, hint_part: Sequence[int]) -> Tuple[NDArrayFloat, NDArrayFloat]:
+    assert x_lim.shape == (2, len(hint_part))
+    assert np.all(x_lim[0] < x_lim[1])
+    x_dim = x_lim.shape[1]
+    x_lb, x_ub = x_lim[0], x_lim[1]
     xi_cuts = [np.linspace(
         x_lb[i], x_ub[i], hint_part[i]+1) for i in range(x_dim)]
     # Mid point for each rectangle

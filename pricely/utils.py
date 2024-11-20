@@ -32,18 +32,18 @@ def check_lyapunov_roi(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
     lya_expr: Expr,
-    x_roi: np.ndarray,
+    x_lim: np.ndarray,
     lya_decay_rate: float = 0.0,
     abs_x_lb: ArrayLike = 2**-6,
-    norm_lb: float = 0.0,
-    norm_ub: float = np.inf,
+    x_norm_lb: float = 0.0,
+    x_norm_ub: float = np.inf,
     config: Config = Config()
 ) -> Optional[Box]:
-    assert x_roi.shape == (2, len(x_vars))
-    assert 0.0 <= norm_lb <= norm_ub
+    assert x_lim.shape == (2, len(x_vars))
+    assert 0.0 <= x_norm_lb <= x_norm_ub
 
-    lb_conds = [x >= Expr(lb) for x, lb in zip(x_vars, x_roi[0])]
-    ub_conds = [x <= Expr(ub) for x, ub in zip(x_vars, x_roi[1])]
+    lb_conds = [x >= Expr(lb) for x, lb in zip(x_vars, x_lim[0])]
+    ub_conds = [x <= Expr(ub) for x, ub in zip(x_vars, x_lim[1])]
 
     abs_lb_conds = []
     if np.isscalar(abs_x_lb):
@@ -54,9 +54,9 @@ def check_lyapunov_roi(
         abs_lb_conds.extend(
             abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
     exclude_rect = logical_or(*abs_lb_conds)
-    if norm_lb > 0.0 or np.isfinite(norm_ub):
+    if x_norm_lb > 0.0 or np.isfinite(x_norm_ub):
         norm_sq = sum(x**2 for x in x_vars)
-        norm_conds = [norm_sq >= norm_lb**2, norm_sq <= norm_ub**2]
+        norm_conds = [norm_sq >= x_norm_lb**2, norm_sq <= x_norm_ub**2]
     else:
         norm_conds = []
 
@@ -135,12 +135,12 @@ def cartesian_prod(*arrays) -> np.ndarray:
 
 def gen_equispace_regions(
         x_part: Sequence[int],
-        x_roi: np.ndarray) -> np.ndarray:
+        x_lim: np.ndarray) -> np.ndarray:
     """ Generate reference values and bounds of x inside ROI """
-    assert x_roi.shape == (2, len(x_part))
+    assert x_lim.shape == (2, len(x_part))
     x_dim = len(x_part)
     axes_cuts = (np.linspace(
-        x_roi[0, i], x_roi[1, i], x_part[i]+1) for i in range(x_dim))
+        x_lim[0, i], x_lim[1, i], x_part[i]+1) for i in range(x_dim))
     bound_pts = cartesian_prod(
         *axes_cuts).reshape(tuple(n+1 for n in x_part) + (x_dim,))
     lb_pts = bound_pts[(slice(0, -1),)*x_dim].reshape((-1, x_dim))

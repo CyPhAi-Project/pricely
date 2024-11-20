@@ -36,7 +36,7 @@ def main(max_epochs: int=200):
     print(" Generate initial samples and cover ".center(80, "="))
     with timer:
         x_regions = gen_init_cover(
-            abs_roi_ub=mod.X_ROI[1],
+            abs_roi_ub=mod.X_LIM[1],
             f_bbox=mod.f_bbox,
             lip_bbox=mod.calc_lip_bbox,
             lip_cap=lip_cap,
@@ -51,7 +51,7 @@ def main(max_epochs: int=200):
         last_epoch, num_regions, cex_regions = \
             verify_lyapunov(
                 mock_learner,
-                mod.X_ROI,
+                mod.X_LIM,
                 mod.ABS_X_LB,
                 x_regions,
                 mod.f_bbox, mod.calc_lip_bbox,
@@ -62,8 +62,8 @@ def main(max_epochs: int=200):
     if mod.X_DIM != 2:  # Support plotting 2D systems only
         return
     print(" Plotting verified regions ".center(80, "="))
-    plt.gca().set_xlim(*(1.125*mod.X_ROI[:, 0]))
-    plt.gca().set_ylim(*(1.125*mod.X_ROI[:, 1]))
+    plt.gca().set_xlim(*(1.125*mod.X_LIM[:, 0]))
+    plt.gca().set_ylim(*(1.125*mod.X_LIM[:, 1]))
 
     plt.gca().set_title(
         f"CEGAR Status: {cegar_status}.\n"

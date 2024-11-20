@@ -55,15 +55,15 @@ class QuadraticLyapunov(PLyapunovCandidate):
         return np.array([]).reshape(len(x_values), 0) if self.u_dim == 0 \
             else x_values @ self._ctrl_mat.T
 
-    def find_level_ub(self, x_roi: NDArrayFloat) -> float:
+    def find_level_ub(self, x_lim: NDArrayFloat) -> float:
         """ Find a sublevel set covering the region of interest
         Heuristically find the max value in the region of interest.
         List all vertices of ROI and pick the max level value.
         Provide it as the upper bound of the level value.
         """
-        assert len(x_roi) == 2
-        x_dim = x_roi.shape[1]
-        x_lb, x_ub= x_roi
+        assert len(x_lim) == 2
+        x_dim = x_lim.shape[1]
+        x_lb, x_ub= x_lim
 
         # XXX This generates 2^x_dim vertices.
         if x_dim > 16:

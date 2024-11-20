@@ -11,14 +11,14 @@ from typing import Sequence
 
 
 X_DIM = 2
-NORM_LB = 0.1
-NORM_UB = 1.0
-X_ROI = np.array([
-    [-NORM_UB]*X_DIM, # Lower bounds
-    [+NORM_UB]*X_DIM  # Upper bounds
+X_NORM_LB = 0.1
+X_NORM_UB = 10.0
+X_LIM = np.array([
+    [-X_NORM_UB]*X_DIM, # Lower bounds
+    [+X_NORM_UB]*X_DIM  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
-ABS_X_LB = NORM_LB/np.sqrt(X_DIM)
+assert X_LIM.shape == (2, X_DIM)
+ABS_X_LB = X_NORM_LB/np.sqrt(X_DIM)
 
 
 def f_bbox(q: np.ndarray) -> np.ndarray:

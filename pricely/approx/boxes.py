@@ -63,17 +63,17 @@ class ConstantApprox(PLocalApprox):
 class AxisAlignedBoxes(PApproxDynamic):
     def __init__(
             self,
-            x_roi: NDArrayFloat, u_roi: NDArrayFloat,
+            x_lim: NDArrayFloat, u_roi: NDArrayFloat,
             x_regions: NDArrayFloat, u_values: NDArrayFloat,
             f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
             lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat]) -> None:
-        assert x_roi.ndim == 2 and x_roi.shape[0] == 2
+        assert x_lim.ndim == 2 and x_lim.shape[0] == 2
         assert u_roi.ndim == 2 and u_roi.shape[0] == 2
-        assert x_regions.ndim == 3 and x_regions.shape[1] == 3 and x_regions.shape[2] == x_roi.shape[1]
+        assert x_regions.ndim == 3 and x_regions.shape[1] == 3 and x_regions.shape[2] == x_lim.shape[1]
         assert u_values.ndim == 2 and u_values.shape[1] == u_roi.shape[1]
         assert len(x_regions) == len(u_values)
 
-        self._x_roi = x_roi
+        self._x_lim = x_lim
         self._u_roi = u_roi
         self._x_regions = x_regions
         self._u_values = u_values.reshape((len(x_regions), -1))  # ensure to be 2D
@@ -105,7 +105,7 @@ class AxisAlignedBoxes(PApproxDynamic):
 
     @property
     def x_dim(self) -> int:
-        return self._x_roi.shape[1]
+        return self._x_lim.shape[1]
 
     @property
     def u_dim(self) -> int:
@@ -180,7 +180,7 @@ class AxisAlignedBoxes(PApproxDynamic):
 
 
 def test_approx():
-    X_ROI = np.array([
+    X_LIM = np.array([
         [-1, -2, -3],
         [+1, +2, +3]])
     U_ROI = np.array([
@@ -193,10 +193,10 @@ def test_approx():
     def lip_bbox(x_regions: NDArrayFloat, u_roi: NDArrayFloat) -> NDArrayFloat:
         return np.ones((len(x_regions)))
 
-    x_regions =gen_equispace_regions([2, 3, 4], X_ROI)
+    x_regions =gen_equispace_regions([2, 3, 4], X_LIM)
     u_values = np.zeros((len(x_regions), 2))
     approx = AxisAlignedBoxes(
-        X_ROI, U_ROI, x_regions, u_values, f_bbox, lip_bbox)
+        X_LIM, U_ROI, x_regions, u_values, f_bbox, lip_bbox)
 
 if __name__ == "__main__":
     test_approx()

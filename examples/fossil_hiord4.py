@@ -11,14 +11,14 @@ from typing import Sequence
 
 
 X_DIM = 4
-NORM_LB = 0.1
-NORM_UB = 1.0
-X_ROI = np.array([
-    [-NORM_UB]*X_DIM, # Lower bounds
-    [+NORM_UB]*X_DIM  # Upper bounds
+X_NORM_LB = 0.1
+X_NORM_UB = 1.0
+X_LIM = np.array([
+    [-X_NORM_UB]*X_DIM, # Lower bounds
+    [+X_NORM_UB]*X_DIM  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
-ABS_X_LB = NORM_LB/np.sqrt(X_DIM)
+assert X_LIM.shape == (2, X_DIM)
+ABS_X_LB = X_NORM_LB/np.sqrt(X_DIM)
 
 KNOWN_QUAD_LYA = np.array([
     [3.40203882e+00, 4.99460619e+00, 3.52756617e+00, 8.68055556e-04],
@@ -64,4 +64,3 @@ def f_expr(x_vars: Sequence[Variable]) -> Sequence[Expr]:
     assert len(x_vars) == X_DIM
     x0, x1, x2, x3 = x_vars
     return [x1, x2, x3, -3980 * x3 - 4180 * x2 - 2400 * x1 - 576 * x0]
-

@@ -9,14 +9,14 @@ L = 0.5  # m
 
 THETA_LIM = np.pi / 4
 
-X_ROI = np.array([
+X_LIM = np.array([
     [-4, -4],  # Lower bounds
     [+4, +4]  # Upper bounds
 ])
 X_DIM = 2
 ABS_X_LB = 0.0625
-NORM_LB = 0.4
-NORM_UB = 4.0
+X_NORM_LB = 0.4
+X_NORM_UB = 4.0
 # LIP_CAP = 10000.0  # Ignore regions with Lipschitz constant exceed this cap
 
 B_MAT = np.array([

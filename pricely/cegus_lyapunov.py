@@ -41,7 +41,7 @@ class PLyapunovCandidate(Protocol):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def find_level_ub(self, x_roi: NDArrayFloat) -> float:
+    def find_level_ub(self, x_lim: NDArrayFloat) -> float:
         raise NotImplementedError
 
 
@@ -288,7 +288,7 @@ def cegus_lyapunov(
 
 def verify_lyapunov(
         learner: PLyapunovLearner,
-        x_roi: NDArrayFloat,
+        x_lim: NDArrayFloat,
         abs_x_lb: ArrayLike,
         init_x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
@@ -303,7 +303,7 @@ def verify_lyapunov(
 
     return verify_lyapunov_control(
         learner=learner,
-        x_roi=x_roi,
+        x_lim=x_lim,
         abs_x_lb=abs_x_lb,
         init_x_regions=init_x_regions,
         f_bbox=new_f_bbox, lip_bbox=new_lip_bbox,
@@ -313,7 +313,7 @@ def verify_lyapunov(
 
 def verify_lyapunov_control(
         learner: PLyapunovLearner,
-        x_roi: NDArrayFloat,
+        x_lim: NDArrayFloat,
         abs_x_lb: ArrayLike,
         init_x_regions: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
@@ -323,7 +323,7 @@ def verify_lyapunov_control(
     """
     assert init_x_regions.shape[1] == 3
     assert max_epochs > 0
-    x_dim = x_roi.shape[1]
+    x_dim = x_lim.shape[1]
     # Initial sampled x values and the constructed set cover
     x_regions = init_x_regions
 
@@ -334,7 +334,7 @@ def verify_lyapunov_control(
             lip_ub: float):
         u_j = np.atleast_1d(u_j)
         from pricely.verifier_dreal import SMTVerifier
-        verifier = SMTVerifier(x_roi=x_roi, u_dim=len(u_j), abs_x_lb=abs_x_lb)
+        verifier = SMTVerifier(x_lim=x_lim, u_dim=len(u_j), abs_x_lb=abs_x_lb)
         verifier.set_lyapunov_candidate(learner)
         return verifier.find_cex(
             x_region_j=x_region_j,
@@ -385,7 +385,7 @@ def verify_lyapunov_control(
     tqdm.write(f"Cannot verify the given Lyapunov function in {max_epochs} iterations.")
     return max_epochs, verified + len(cex_regions), x_regions
     """
-    return 0, 0, np.array([]).reshape((0, 3, x_roi.shape[1]))
+    return 0, 0, np.array([]).reshape((0, 3, x_lim.shape[1]))
 
 
 def get_unverified_regions(

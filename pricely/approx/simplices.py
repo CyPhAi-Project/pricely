@@ -141,18 +141,18 @@ class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
 class SimplicialComplex(PApproxDynamic):
     def __init__(
             self,
-            x_roi: NDArrayFloat, u_roi: NDArrayFloat,
+            x_lim: NDArrayFloat, u_roi: NDArrayFloat,
             x_values: NDArrayFloat, u_values: NDArrayFloat,
             f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
             lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat]
         ) -> None:
-        assert x_roi.ndim == 2 and x_roi.shape[0] == 2
+        assert x_lim.ndim == 2 and x_lim.shape[0] == 2
         assert u_roi.ndim == 2 and u_roi.shape[0] == 2
-        assert x_values.ndim == 2 and x_values.shape[1] == x_roi.shape[1]
+        assert x_values.ndim == 2 and x_values.shape[1] == x_lim.shape[1]
         assert u_values.ndim == 2 and u_values.shape[1] == u_roi.shape[1]
         assert len(x_values) == len(u_values)
 
-        self._x_roi = x_roi
+        self._x_lim = x_lim
         self._u_roi = u_roi
         self._triangulation = Delaunay(points=x_values, incremental=True)
         self._u_values = u_values
@@ -165,11 +165,11 @@ class SimplicialComplex(PApproxDynamic):
     @classmethod
     def from_autonomous(
         cls,
-        x_roi: NDArrayFloat, x_values: NDArrayFloat,
+        x_lim: NDArrayFloat, x_values: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat]):
         return cls(
-            x_roi=x_roi,
+            x_lim=x_lim,
             u_roi=np.empty((2, 0)),
             x_values=x_values,
             u_values=np.empty((len(x_values), 0)),
@@ -199,7 +199,7 @@ class SimplicialComplex(PApproxDynamic):
 
     @property
     def x_dim(self) -> int:
-        return self._x_roi.shape[1]
+        return self._x_lim.shape[1]
 
     @property
     def u_dim(self) -> int:
@@ -272,13 +272,13 @@ class SimplicialComplex(PApproxDynamic):
 
 def test_approx():
     from pricely.utils import cartesian_prod
-    X_ROI = np.array([
+    X_LIM = np.array([
         [-1, -2],
         [+1, +2]])
     U_ROI = np.array([
         [-0.5],
         [+0.5]])
-    X_DIM = X_ROI.shape[1]
+    X_DIM = X_LIM.shape[1]
 
     def f_bbox(x: NDArrayFloat, u: NDArrayFloat) -> NDArrayFloat:
         dxdt = np.empty_like(x)
@@ -291,15 +291,15 @@ def test_approx():
         max_abs_x[:, 1] = 1.5 * max_abs_x[:, 1]**2
         return max_abs_x.max(axis=1)
 
-    axis_cuts = np.linspace(start=X_ROI[0], stop=X_ROI[1], num=5).transpose()
+    axis_cuts = np.linspace(start=X_LIM[0], stop=X_LIM[1], num=5).transpose()
     x_values = cartesian_prod(*axis_cuts)
     u_values = np.zeros((len(x_values), U_ROI.shape[1]))
     approx = SimplicialComplex(
-        X_ROI, U_ROI, x_values, u_values, f_bbox, lip_bbox)
+        X_LIM, U_ROI, x_values, u_values, f_bbox, lip_bbox)
 
     item = 3
     local_approx = approx[item]
-    x_vars = [Variable(f"x{i}") for i in range(X_ROI.shape[1])]
+    x_vars = [Variable(f"x{i}") for i in range(X_LIM.shape[1])]
     u_vars = [Variable(f"u{i}") for i in range(U_ROI.shape[1])]
     print(local_approx._x_values)
     print(local_approx._y_values)

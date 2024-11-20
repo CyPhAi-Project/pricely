@@ -10,11 +10,11 @@ VEL = 2.8  # m/s
 STEER_LIM = 0.61  # rad
 
 X_DIM = 2
-X_ROI = np.array([
+X_LIM = np.array([
     [-2.0, -THETA_LIM],  # Lower bounds
     [+2.0, +THETA_LIM]  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
+assert X_LIM.shape == (2, X_DIM)
 ABS_X_LB = 2**-10
 
 

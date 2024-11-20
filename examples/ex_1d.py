@@ -4,11 +4,11 @@ from typing import Sequence
 
 X_DIM = 1
 
-X_ROI = np.array([
+X_LIM = np.array([
     [-2.0],  # Lower bounds
     [+2.0]  # Upper bounds
 ])
-assert X_ROI.shape == (2, X_DIM)
+assert X_LIM.shape == (2, X_DIM)
 ABS_X_LB = 2**-6
 KNOWN_QUAD_LYA = np.eye(1)
 
