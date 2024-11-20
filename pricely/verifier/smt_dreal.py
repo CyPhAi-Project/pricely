@@ -4,11 +4,7 @@ from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Sequence, Union
 
 from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
-
-
-def pretty_sub(i: int) -> str:
-    prefix = "" if i < 10 else pretty_sub(i // 10)
-    return prefix + chr(0x2080 + (i % 10))
+from pricely.utils import pretty_sub
 
 
 class DRealVars(NamedTuple):
@@ -209,7 +205,7 @@ class SMTVerifier(PLyapunovVerifier):
 
 
 def test_substitution():
-    from pricely.learner_mock import MockQuadraticLearner
+    from pricely.learner.mock import MockQuadraticLearner
     from pricely.approx.boxes import ConstantApprox
     X_ROI = np.asfarray([
         [-1, -1.5, -3],

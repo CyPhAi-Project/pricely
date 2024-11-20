@@ -7,7 +7,7 @@ from plot_utils_2d import CatchTime, plot_cegar_result, validate_lip_bbox
 
 from pricely.gen_cover import gen_init_cover
 from pricely.cegus_lyapunov import verify_lyapunov
-from pricely.learner_mock import MockQuadraticLearner
+from pricely.learner.mock import MockQuadraticLearner
 
 
 OUT_DIR = Path(f"out/{str(date.today())}")
@@ -16,7 +16,7 @@ OUT_DIR = Path(f"out/{str(date.today())}")
 def main(max_epochs: int=200):
     # import circle_following as mod
     # import ex_1d as mod
-    import inverted_pendulum as mod
+    import neurips2022_inverted_pendulum as mod
     # import lcss2020_eq14 as mod
     # import lcss2020_eq15 as mod
     # import traj_tracking_wheeled as mod

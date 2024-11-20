@@ -52,7 +52,6 @@ class ConstantApprox(PLocalApprox):
             for x, lb, ub in zip(x_vars, self._lb, self._ub)))
 
     def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
-        # TODO Support control input
         return self._lip * Sqrt(
             sum((x - v)**2 for x, v in zip(x_vars, self._x)) +
             sum((u - v)**2 for u, v in zip(u_vars, self._u)))

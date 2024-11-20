@@ -10,9 +10,9 @@ from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate
 from pricely.approx.simplices import SimplicialComplex
 from pricely.candidates import QuadraticLyapunov
 from pricely.cegus_lyapunov import cegus_lyapunov
-from pricely.learner_cvxpy import QuadraticLearner
+from pricely.learner.cvxpy import QuadraticLearner
 from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set
-from pricely.verifier_dreal import SMTVerifier, pretty_sub
+from pricely.verifier.smt_dreal import SMTVerifier, pretty_sub
 
 NCOLS = 120
 
@@ -102,9 +102,9 @@ def main(max_epochs: int=40, n_jobs: int=16):
     # import fossil_poly1 as mod
     # import fossil_poly2 as mod
     # import fossil_poly3 as mod
-    import fossil_poly4 as mod
+    # import fossil_poly4 as mod
     # import traj_tracking_wheeled as mod
-    # import neurips2022_van_der_pol as mod
+    import neurips2022_van_der_pol as mod
     # import neurips2022_unicycle_following as mod
     # import neurips2022_inverted_pendulum as mod
     # import path_following_stanley as mod

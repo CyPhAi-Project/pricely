@@ -18,6 +18,16 @@ def _gen_neg_lya_cond(
     return logical_or(lya_expr <= 0.0, lie_der_lya + lya_decay_rate*lya_expr >= 0.0)
 
 
+def pretty_sub(i: int) -> str:
+    """ Convert integers to subscripted numbers """
+    assert i >= 0
+    rev_str = [chr(0x2080 + (i % 10))]
+    while i >= 10:
+        i = i // 10
+        rev_str.append(chr(0x2080 + (i % 10)))
+    return "".join(reversed(rev_str))
+
+
 def check_lyapunov_roi(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
