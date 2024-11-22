@@ -18,6 +18,7 @@ class QuadraticLearner(PLyapunovLearner):
         self._x_dim = x_dim
         self._u_dim = u_dim
         self._tol = tol
+        self._eps = cp.Variable(1, name="ϵ", nonneg=True)
         self._v_max = v_max
         self._build_prob = {
             "analytic": self._analytic,
@@ -41,13 +42,14 @@ class QuadraticLearner(PLyapunovLearner):
         constraints = [
             self._sym_mat >= -self._v_max,
             self._sym_mat <= self._v_max,
-            xPx >= 0,  # g_x(P) <= 0 in paper
-            yPx <= 0,  # h_x(P) <= 0 in paper
+            xPx >= self._eps,  # g_x(P) < 0 in paper
+            yPx <= -self._eps,  # h_x(P) < 0 in paper
+            self._eps <= 2**-10
         ]
         obj = cp.Maximize(
             cp.sum(cp.log(self._v_max - self._sym_mat)) + cp.sum(cp.log(self._v_max + self._sym_mat)) +
             cp.sum(cp.log(xPx)) + cp.sum(cp.log(-yPx)))
-        return obj, constraints
+        return obj, constraints  # type: ignore
 
     def _chebyshev(self, x: NDArrayFloat, u: NDArrayFloat, y: NDArrayFloat) -> Tuple[cp.Maximize, List[cp.Constraint]]:
         """
@@ -70,11 +72,14 @@ class QuadraticLearner(PLyapunovLearner):
         for solver in FEASIBILITY_SOLVERS:
             try:
                 # Check feasibility first
-                feasibility = cp.Problem(cp.Maximize(0.0), cons)
+                feasibility = cp.Problem(cp.Maximize(self._eps), cons)
                 feasibility.solve(solver)
                 if feasibility.status in [cp.INFEASIBLE]:
                     return []
                 elif feasibility.status in [cp.OPTIMAL]:
+                    if feasibility.objective.value <= self._tol:  #type: ignore
+                        return []  # Almost infeasible
+                    # else:
                     break
                 else:
                     raise RuntimeError(f"Unexpected status for feasibility check {feasibility.status}")
@@ -86,7 +91,7 @@ class QuadraticLearner(PLyapunovLearner):
         for solver in [cp.CLARABEL, cp.SCS]:
             try:
                 # Optimize the logarithmic barrier objective
-                prob = cp.Problem(obj, cons)
+                prob = cp.Problem(obj)
                 prob.solve(solver)
                 if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
                     assert not np.any(np.isnan(self._sym_mat.value))
