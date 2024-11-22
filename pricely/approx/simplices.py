@@ -4,7 +4,7 @@ from scipy.spatial import Delaunay, QhullError
 from scipy.spatial.distance import pdist
 from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import NDArrayFloat, PApproxDynamic, PLocalApprox, PLyapunovCandidate
+from pricely.cegus_lyapunov import NDArrayFloat, ROI, PApproxDynamic, PLocalApprox, PLyapunovCandidate
 
 
 class DatasetApproxBase(PLocalApprox):
@@ -141,18 +141,19 @@ class AnySimplexConstant(BarycentricMixin, AnyBoxConstant):
 class SimplicialComplex(PApproxDynamic):
     def __init__(
             self,
-            x_lim: NDArrayFloat, u_roi: NDArrayFloat,
+            x_roi: ROI, u_roi: NDArrayFloat,
             x_values: NDArrayFloat, u_values: NDArrayFloat,
             f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
             lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat]
         ) -> None:
+        x_lim = x_roi.x_lim
         assert x_lim.ndim == 2 and x_lim.shape[0] == 2
         assert u_roi.ndim == 2 and u_roi.shape[0] == 2
         assert x_values.ndim == 2 and x_values.shape[1] == x_lim.shape[1]
         assert u_values.ndim == 2 and u_values.shape[1] == u_roi.shape[1]
         assert len(x_values) == len(u_values)
 
-        self._x_lim = x_lim
+        self._x_roi = x_roi
         self._u_roi = u_roi
         self._triangulation = Delaunay(points=x_values, incremental=True)
         self._u_values = u_values
@@ -165,11 +166,11 @@ class SimplicialComplex(PApproxDynamic):
     @classmethod
     def from_autonomous(
         cls,
-        x_lim: NDArrayFloat, x_values: NDArrayFloat,
+        x_roi: ROI, x_values: NDArrayFloat,
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat]):
         return cls(
-            x_lim=x_lim,
+            x_roi=x_roi,
             u_roi=np.empty((2, 0)),
             x_values=x_values,
             u_values=np.empty((len(x_values), 0)),
@@ -199,7 +200,7 @@ class SimplicialComplex(PApproxDynamic):
 
     @property
     def x_dim(self) -> int:
-        return self._x_lim.shape[1]
+        return self._x_roi.x_lim.shape[1]
 
     @property
     def u_dim(self) -> int:
@@ -279,6 +280,7 @@ def test_approx():
         [-0.5],
         [+0.5]])
     X_DIM = X_LIM.shape[1]
+    X_ROI = ROI(x_lim=X_LIM, x_norm_lim=(0.125, 1.5), abs_x_lb=0.0)
 
     def f_bbox(x: NDArrayFloat, u: NDArrayFloat) -> NDArrayFloat:
         dxdt = np.empty_like(x)
@@ -295,7 +297,7 @@ def test_approx():
     x_values = cartesian_prod(*axis_cuts)
     u_values = np.zeros((len(x_values), U_ROI.shape[1]))
     approx = SimplicialComplex(
-        X_LIM, U_ROI, x_values, u_values, f_bbox, lip_bbox)
+        X_ROI, U_ROI, x_values, u_values, f_bbox, lip_bbox)
 
     item = 3
     local_approx = approx[item]

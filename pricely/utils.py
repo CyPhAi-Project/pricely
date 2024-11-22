@@ -4,6 +4,8 @@ import numpy as np
 from numpy.typing import ArrayLike
 from typing import Callable, Optional, Sequence
 
+from pricely.cegus_lyapunov import ROI
+
 
 def _gen_neg_lya_cond(
         x_vars: Sequence[Variable],
@@ -32,13 +34,11 @@ def check_lyapunov_roi(
     x_vars: Sequence[Variable],
     dxdt_exprs: Sequence[Expr],
     lya_expr: Expr,
-    x_lim: np.ndarray,
+    x_roi: ROI,
     lya_decay_rate: float = 0.0,
-    abs_x_lb: ArrayLike = 2**-6,
-    x_norm_lb: float = 0.0,
-    x_norm_ub: float = np.inf,
     config: Config = Config()
 ) -> Optional[Box]:
+    x_lim, abs_x_lb, (x_norm_lb, x_norm_ub) = x_roi
     assert x_lim.shape == (2, len(x_vars))
     assert 0.0 <= x_norm_lb <= x_norm_ub
 

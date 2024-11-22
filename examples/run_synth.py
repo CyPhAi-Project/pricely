@@ -2,16 +2,16 @@ from datetime import date
 from dreal import Config, Variable  # type: ignore
 import numpy as np
 from math import factorial
-from matplotlib.patches import Circle, Ellipse, Rectangle
+from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
 
 from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
 from pricely.approx.simplices import SimplicialComplex
 from pricely.candidates import QuadraticLyapunov
-from pricely.cegus_lyapunov import cegus_lyapunov
+from pricely.cegus_lyapunov import ROI, cegus_lyapunov
 from pricely.learner.cvxpy import QuadraticLearner
-from pricely.utils import cartesian_prod, check_lyapunov_roi, check_lyapunov_sublevel_set
+from pricely.utils import cartesian_prod, check_lyapunov_roi
 from pricely.verifier.smt_dreal import SMTVerifier, pretty_sub
 
 NCOLS = 120
@@ -109,6 +109,12 @@ def main(max_epochs: int=40, n_jobs: int=16):
     # import neurips2022_inverted_pendulum as mod
     # import path_following_stanley as mod
 
+    x_roi = ROI(
+        x_lim=mod.X_LIM,
+        abs_x_lb=mod.ABS_X_LB,
+        x_norm_lim=(getattr(mod, "X_NORM_LB", 0.0),
+                    getattr(mod, "X_NORM_UB", np.inf)))
+
     timer = CatchTime()
 
     init_part = [5]*mod.X_DIM
@@ -124,7 +130,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
         ]
         x_values = cartesian_prod(*axis_cuts)
         approx = SimplicialComplex.from_autonomous(
-            x_lim=mod.X_LIM,
+            x_roi=x_roi,
             x_values=x_values,
             f_bbox=mod.f_bbox,
             lip_bbox=mod.calc_lip_bbox)
@@ -139,10 +145,7 @@ def main(max_epochs: int=40, n_jobs: int=16):
     print(" Run CEGuS ".center(NCOLS, "="))
     with timer:
         learner = QuadraticLearner(mod.X_DIM, v_max=1e8)
-        verifier = SMTVerifier(
-            x_lim=mod.X_LIM, abs_x_lb=mod.ABS_X_LB,
-            x_norm_lb=getattr(mod, "X_NORM_LB", 0.0),
-            x_norm_ub=getattr(mod, "X_NORM_UB", np.inf), config=config)
+        verifier = SMTVerifier(x_roi=x_roi, config=config)
         status, last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
@@ -170,11 +173,8 @@ def main(max_epochs: int=40, n_jobs: int=16):
         print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
         result = check_lyapunov_roi(
             x_vars, dxdt_exprs, lya_expr,
-            mod.X_LIM,
-            lya_decay_rate,
-            mod.ABS_X_LB,
-            x_norm_lb=getattr(mod, "X_NORM_LB", 0.0),
-            x_norm_ub=getattr(mod, "X_NORM_UB", np.inf),
+            x_roi,
+            lya_decay_rate=lya_decay_rate,
             config=config)
         if result is None:
             print("Learned candidate is a valid Lyapunov function for ROI.")

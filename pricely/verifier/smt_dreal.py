@@ -1,9 +1,8 @@
 from dreal import CheckSatisfiability, Config, Expression as Expr, sqrt as Sqrt, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
-from numpy.typing import ArrayLike
 from typing import NamedTuple, Optional, Sequence, Union
 
-from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
+from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, ROI, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
 from pricely.utils import pretty_sub
 
 
@@ -63,17 +62,15 @@ def to_dreal(conf_tup: ConfigTuple) -> Config:
 class SMTVerifier(PLyapunovVerifier):
     def __init__(
             self,
-            x_lim: NDArrayFloat,
+            x_roi: ROI,
             u_dim: int = 0,
-            abs_x_lb: ArrayLike = 2**-6,
-            x_norm_lb: float = 0.0,
-            x_norm_ub: float = np.inf,
             config: Union[Config, ConfigTuple] = ConfigTuple()) -> None:
+        x_lim, abs_x_lb, (x_norm_lb, x_norm_ub) = x_roi
         assert x_lim.shape[0] == 2 and x_lim.shape[1] >= 1
         assert np.all(np.asfarray(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
         assert 0.0 <= x_norm_lb <= x_norm_ub
 
-        self._x_lim = x_lim
+        self._x_roi = x_roi
         self._u_dim = u_dim
         self._abs_x_lb = abs_x_lb
         self._x_norm_lb = x_norm_lb
@@ -86,8 +83,8 @@ class SMTVerifier(PLyapunovVerifier):
 
     @property
     def x_dim(self) -> int:
-        return self._x_lim.shape[1]
-    
+        return self._x_roi.x_lim.shape[1]
+
     @property
     def u_dim(self) -> int:
         return self._u_dim
@@ -183,9 +180,9 @@ class SMTVerifier(PLyapunovVerifier):
         exclude_rect = logical_or(*abs_x_lb_conds)
         region_pred_list.append(exclude_rect)
 
-        x_lim_lb_conds = (x >= Expr(lb) for x, lb in zip(x_vars, self._x_lim[0]))
+        x_lim_lb_conds = (x >= Expr(lb) for x, lb in zip(x_vars, self._x_roi.x_lim[0]))
         region_pred_list.extend(x_lim_lb_conds)
-        x_lim_ub_conds = (x <= Expr(ub) for x, ub in zip(x_vars, self._x_lim[1]))
+        x_lim_ub_conds = (x <= Expr(ub) for x, ub in zip(x_vars, self._x_roi.x_lim[1]))
         region_pred_list.extend(x_lim_ub_conds)
 
         if self._x_norm_lb > 0.0 or np.isfinite(self._x_norm_ub):
@@ -215,7 +212,8 @@ def test_substitution():
     ctrl_mat = -np.eye(U_DIM, X_DIM)
     learner = MockQuadraticLearner(pd_mat=pd_mat, ctrl_mat=ctrl_mat)
 
-    verifier = SMTVerifier(X_LIM, u_dim=U_DIM, abs_x_lb=2**-4)
+    x_roi = ROI(x_lim=X_LIM, abs_x_lb=2**-4)
+    verifier = SMTVerifier(x_roi, u_dim=U_DIM)
     verifier.set_lyapunov_candidate(learner.get_candidate())
 
     region = np.row_stack((np.zeros(X_DIM), X_LIM)).reshape((3, X_DIM))

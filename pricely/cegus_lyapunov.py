@@ -12,6 +12,26 @@ NCOLS = 120
 NDArrayFloat = NDArray[np.float_]
 NDArrayIndex = NDArray[np.int_]
 
+
+class ROI(NamedTuple):
+    """
+    Define a region of interest by constraining the vector x as below:
+    x_lim[0, i] <= x[i] <= x_lim[1, i]
+    x_norm_lim[0] <= ‖x‖ <= x_norm_lim[1]
+    abs_x_lb <= min(abs(x[i]))
+    """
+    x_lim: NDArrayFloat
+    abs_x_lb: float
+    x_norm_lim: Tuple[float, float] = (0.0, np.inf)
+
+    def contains(self, x_values: NDArrayFloat) -> np.ndarray:
+        norm_x_values = np.linalg.norm(x_values, axis=1)
+        return np.all(x_values >= self.x_lim[0], axis=1) & np.all(x_values <= self.x_lim[1], axis=1) \
+            & (norm_x_values >= self.x_norm_lim[0]) \
+            & (norm_x_values <= self.x_norm_lim[1]) \
+            & (np.max(np.abs(x_values), axis=1) >= self.abs_x_lb)
+
+
 class PLyapunovCandidate(Protocol):
     @abc.abstractmethod
     def __copy__(self):
