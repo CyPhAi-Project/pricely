@@ -184,6 +184,7 @@ def cegus_lyapunov(
         timeout_per_job: Optional[float] = 30.0) -> CEGuSResult:
     assert max_epochs > 0
 
+    # TODO the diameter threshold can be larger for a cover using AxisAlignedBoxes
     diam_lb = delta * np.sqrt(2.0 + 2.0 / verifier.x_dim) / 2.0
     # Initial set cover and sampled values
     curr_approx = init_approx

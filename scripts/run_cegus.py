@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Optional
 
 from scripts.utils_plotting_2d import CatchTime, add_level_sets, add_valid_regions
+from pricely.approx.boxes import AxisAlignedBoxes
 from pricely.approx.simplices import SimplicialComplex
 from pricely.candidates import QuadraticLyapunov
 from pricely.cegus_lyapunov import ROI, cegus_lyapunov
 from pricely.learner.cvxpy import QuadraticLearner
-from pricely.utils import cartesian_prod, check_lyapunov_roi
+from pricely.utils import cartesian_prod, check_lyapunov_roi, gen_equispace_regions
 from pricely.verifier.smt_dreal import SMTVerifier, pretty_sub
 
 NCOLS = 120
@@ -55,7 +56,10 @@ def viz_basin_2d(ax, mod, cand: QuadraticLyapunov):
 def viz_region_stats(x_lim, approx, cex_regions):
     x_dim = x_lim.shape[1]
 
-    assert isinstance(approx, SimplicialComplex)
+    if not isinstance(approx, SimplicialComplex):
+        # TODO
+        print("TODO plot statistics for boxes")
+        return plt.figure()
     print(" Plotting volumes of all regions in descending order".center(NCOLS, "="))
     fig = plt.figure()
     fig.suptitle("Volumes of regions")
@@ -100,16 +104,22 @@ def main(mod, out_dir: Optional[Path]=None,
 
     print(" Generate initial samples and cover ".center(NCOLS, "="))
     with timer:
-        axis_cuts = [
-            np.linspace(start=bnd[0], stop=bnd[1], num=cuts+1)
-            for bnd, cuts in zip(mod.X_LIM.T, init_part)
-        ]
-        x_values = cartesian_prod(*axis_cuts)
-        approx = SimplicialComplex.from_autonomous(
-            x_roi=x_roi,
-            x_values=x_values,
-            f_bbox=mod.f_bbox,
-            lip_bbox=mod.calc_lip_bbox)
+        if mod.X_DIM == 1:
+            approx = AxisAlignedBoxes.from_autonomous(
+                x_roi=x_roi,
+                x_regions=gen_equispace_regions(init_part, x_roi.x_lim),
+                f_bbox=mod.f_bbox,
+                lip_bbox=mod.calc_lip_bbox)
+        else:
+            axis_cuts = [
+                np.linspace(start=bnd[0], stop=bnd[1], num=cuts+1)
+                for bnd, cuts in zip(mod.X_LIM.T, init_part)]
+            x_values = cartesian_prod(*axis_cuts)
+            approx = SimplicialComplex.from_autonomous(
+                x_roi=x_roi,
+                x_values=x_values,
+                f_bbox=mod.f_bbox,
+                lip_bbox=mod.calc_lip_bbox)
 
     # dReal configurations
     config = Config()
@@ -161,7 +171,7 @@ def main(mod, out_dir: Optional[Path]=None,
             print(f"Counterexample:\n{result}")
         validation = (result is None)
 
-    if out_dir is None:  # Skip plotting
+    if out_dir is None or len(last_approx) >= 2*10**4:  # Skip plotting
         return cand
 
     fig_err = viz_region_stats(mod.X_LIM, last_approx, cex_regions)

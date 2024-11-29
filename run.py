@@ -1,12 +1,12 @@
 from datetime import date
 from pathlib import Path
 
-import examples.neurips2022_inverted_pendulum as mod
+import examples.ex_1d as mod
 
 from scripts import run_cegus, plot_phaseportrait_2d, validate_lip_bbox
 
 OUT_DIR = Path(f"out/{date.today()}/{mod.__name__.split('.')[-1]}")
-OUT_DIR.mkdir(exist_ok=True)
+OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Validate the provided Lipschitz constant(s) by evenly-spaced sampling
 MAX_SAMPLES = 10**6

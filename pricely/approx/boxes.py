@@ -2,7 +2,7 @@ from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_a
 import numpy as np
 from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox, split_region
+from pricely.cegus_lyapunov import ROI, NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox, split_region
 from pricely.utils import gen_equispace_regions
 
 
@@ -84,6 +84,20 @@ class AxisAlignedBoxes(PApproxDynamic):
         self._lip_values = lip_bbox(x_regions, u_roi)
         assert len(self._x_regions) == len(self._y_values) and len(self._x_regions) == len(self._lip_values)
 
+    @classmethod
+    def from_autonomous(
+        cls,
+        x_roi: ROI, x_regions: NDArrayFloat,
+        f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
+        lip_bbox: Callable[[NDArrayFloat], NDArrayFloat]):
+        return cls(
+            x_lim=x_roi.x_lim,
+            u_roi=np.empty((2, 0)),
+            x_regions=x_regions,
+            u_values=np.empty((len(x_regions), 0)),
+            f_bbox=lambda x, u: f_bbox(x),
+            lip_bbox=lambda x, u: lip_bbox(x))
+
     @property
     def x_values(self) -> NDArrayFloat:
         "Get sampled states"
@@ -136,7 +150,7 @@ class AxisAlignedBoxes(PApproxDynamic):
         new_x_values = new_regions[:, 0, :]
         new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
-        new_lip_values = self._lip_bbox(new_regions, self._u_roi)
+        new_lip_values = np.atleast_1d(self._lip_bbox(new_regions, self._u_roi))
 
         self._x_regions = np.concatenate((self._x_regions, new_regions), axis=0)
         self._u_values = np.row_stack((self._u_values, new_u_values))
