@@ -60,10 +60,6 @@ class PLyapunovCandidate(Protocol):
     def ctrl_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def find_level_ub(self, x_lim: NDArrayFloat) -> float:
-        raise NotImplementedError
-
 
 class PLyapunovLearner(Protocol):
     @abc.abstractmethod
