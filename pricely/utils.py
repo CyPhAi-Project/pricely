@@ -1,8 +1,7 @@
 from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and, logical_or  # type: ignore
-from functools import partial
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import Callable, Optional, Sequence
+from typing import Optional, Sequence
 
 from pricely.cegus_lyapunov import ROI
 
@@ -147,37 +146,3 @@ def gen_equispace_regions(
     ub_pts = bound_pts[(slice(1, None),)*x_dim].reshape((-1, x_dim))
     x = (lb_pts + ub_pts) / 2
     return np.stack((x, lb_pts, ub_pts), axis=1)
-
-
-def lip_bbox(
-        x_dim: int,
-        f_bbox: Callable[[np.ndarray], np.ndarray],
-        num_pts: int,
-        ratios: np.ndarray,
-        region: np.ndarray) -> float:    
-    assert region.shape == (3, x_dim)
-    x_ref, x_lb, x_ub = region
-    x_values = ratios * x_ub + (1.0 - ratios)*x_lb
-    x_dists = np.linalg.norm(x_values - x_ref, axis=1)
-
-    y_ref = f_bbox(x_ref.reshape(1, x_dim))
-    y_values = f_bbox(x_values)
-    y_dists = np.linalg.norm(y_values - y_ref, axis=1)
-    lip_lbs = np.divide(
-            y_dists, x_dists,
-            out=np.full(num_pts**x_dim, np.nan),  # Default nan when Div By 0
-            where=~np.isclose(x_dists, np.zeros_like(x_dists)))
-    lip_lb = np.nanmax(lip_lbs)
-    return lip_lb
-
-
-def gen_lip_bbox(
-        x_dim: int, 
-        f_bbox: Callable[[np.ndarray], np.ndarray],
-        num_cuts: int = 16
-    ) -> Callable[[np.ndarray], float]:
-    num_pts = num_cuts + 1
-    cuts = np.linspace(np.zeros(x_dim), np.ones(x_dim), num_pts).T
-    ratios = cartesian_prod(*cuts).reshape((num_pts**x_dim, x_dim))
-
-    return partial(lip_bbox, x_dim, f_bbox, num_pts, ratios)

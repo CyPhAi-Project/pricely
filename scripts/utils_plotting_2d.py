@@ -1,18 +1,13 @@
 from matplotlib.axes import Axes
 from matplotlib.patches import Rectangle
-from multiprocessing import Pool
 import numpy as np
 from scipy.spatial import Delaunay
 import time
-from tqdm import tqdm
-from typing import Callable, Sequence
+from typing import Callable
 
 from pricely.approx.boxes import AxisAlignedBoxes
 from pricely.approx.simplices import SimplicialComplex
 from pricely.cegus_lyapunov import PApproxDynamic
-from pricely.utils import gen_equispace_regions, gen_lip_bbox
-
-NCOLS = 120
 
 
 def add_level_sets(
@@ -112,27 +107,3 @@ class CatchTime:
         self._elapsed = time.perf_counter() - self._start
         self._readout = f'Time Usage: {self._elapsed:.3f} seconds'
         print(self._readout)
-
-
-def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
-    est_lip_lb = gen_lip_bbox(mod.X_DIM, mod.f_bbox)
-
-    regions = gen_equispace_regions(parts, mod.X_LIM)
-
-    lip_values = mod.calc_lip_bbox(regions)
-    with Pool(n_jobs) as p:
-        result_iter = tqdm(
-            p.map(est_lip_lb, regions),
-            desc=f"Validate Lipshitz Constants",
-            total=len(regions), ascii=True, ncols=NCOLS)
-        lip_lbs = np.fromiter(result_iter, dtype=float)
-
-    min_lb_idx = np.argmin(lip_lbs)
-    max_lb_idx = np.argmax(lip_lbs)
-    min_diff_idx = np.argmin(lip_values - lip_lbs)
-    max_diff_idx = np.argmax(lip_values -lip_lbs)
-    print(f"Min Estimated vs Provided: {lip_lbs[min_lb_idx]:.3f} <= {lip_values[min_lb_idx]:.3f}")
-    print(f"Max Estimated vs Provided: {lip_lbs[max_lb_idx]:.3f} <= {lip_values[max_lb_idx]:.3f}")
-    print(f"Best diff: {lip_lbs[min_diff_idx]:.3f} <= {lip_values[min_diff_idx]:.3f}")
-    print(f"Worst diff: {lip_lbs[max_diff_idx]:.3f} <= {lip_values[max_diff_idx]:.3f}")
-    assert np.all(lip_lbs <= lip_values)

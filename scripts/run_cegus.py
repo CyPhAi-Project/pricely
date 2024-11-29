@@ -1,12 +1,12 @@
-from datetime import date
 from dreal import Config, Variable  # type: ignore
 import numpy as np
 from math import factorial
 from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
+from typing import Optional
 
-from plot_utils_2d import CatchTime, add_level_sets, add_valid_regions, validate_lip_bbox
+from scripts.utils_plotting_2d import CatchTime, add_level_sets, add_valid_regions
 from pricely.approx.simplices import SimplicialComplex
 from pricely.candidates import QuadraticLyapunov
 from pricely.cegus_lyapunov import ROI, cegus_lyapunov
@@ -16,15 +16,9 @@ from pricely.verifier.smt_dreal import SMTVerifier, pretty_sub
 
 NCOLS = 120
 
-OUT_DIR = Path(f"out/{str(date.today())}")
-OUT_DIR.mkdir(exist_ok=True)
-
 
 def viz_regions_2d(ax, mod, last_approx, cex_regions):
     print(" Plotting verified regions ".center(NCOLS, "="))
-    # Calculate the axis-aligned bounding box
-    # ax.set_xlim(-1.125*abs_x_ub[0], +1.125*abs_x_ub[0])
-    # ax.set_ylim(-1.125*abs_x_ub[1], +1.125*abs_x_ub[1])
     x_lim = mod.X_LIM
     abs_x_lb = mod.ABS_X_LB
     ax.set_xlim(*(1.0625*x_lim[:, 0]))
@@ -32,8 +26,6 @@ def viz_regions_2d(ax, mod, last_approx, cex_regions):
 
     add_valid_regions(
         ax, last_approx, cex_regions)
-    # ax.add_patch(Rectangle(
-    #     (-abs_x_ub[0], -abs_x_ub[1]), 2*abs_x_ub[0], 2*abs_x_ub[1], color='b', fill=False))
 
     if hasattr(mod, "X_NORM_LB"):
         ax.add_patch(Circle((0, 0), mod.X_NORM_LB, color='r', fill=False))
@@ -93,22 +85,9 @@ def viz_region_stats(x_lim, approx, cex_regions):
     return fig
 
 
-def main(max_epochs: int=40, n_jobs: int=16):
-    # import hscc2014_normalized_pendulum as mod
-    # import fossil_nonpoly0 as mod
-    # import fossil_nonpoly1 as mod
-    # import fossil_nonpoly2 as mod
-    # import fossil_nonpoly3 as mod
-    # import fossil_poly1 as mod
-    # import fossil_poly2 as mod
-    # import fossil_poly3 as mod
-    # import fossil_poly4 as mod
-    # import traj_tracking_wheeled as mod
-    import neurips2022_van_der_pol as mod
-    # import neurips2022_unicycle_following as mod
-    # import neurips2022_inverted_pendulum as mod
-    # import path_following_stanley as mod
-
+def main(mod, out_dir: Optional[Path]=None,
+        max_epochs: int=40, max_num_samples: int=5*10**5,
+        n_jobs: int=16) -> Optional[QuadraticLyapunov]:
     x_roi = ROI(
         x_lim=mod.X_LIM,
         abs_x_lb=mod.ABS_X_LB,
@@ -118,9 +97,6 @@ def main(max_epochs: int=40, n_jobs: int=16):
     timer = CatchTime()
 
     init_part = [5]*mod.X_DIM
-    print(" Validate local Lipschitz constants ".center(NCOLS, "="))
-    with timer:
-        validate_lip_bbox(mod, init_part)
 
     print(" Generate initial samples and cover ".center(NCOLS, "="))
     with timer:
@@ -150,8 +126,11 @@ def main(max_epochs: int=40, n_jobs: int=16):
             cegus_lyapunov(
                 learner, verifier, approx,
                 delta=1e-4,
-                max_epochs=max_epochs, max_iter_learn=1, n_jobs=n_jobs)
+                max_epochs=max_epochs, max_iter_learn=1,
+                max_num_samples=max_num_samples,
+                n_jobs=n_jobs)
         print(f"\nCEGuS Status: {status}")
+    cand: Optional[QuadraticLyapunov] = None
     if status != "NO_CANDIDATE":
         cand = learner.get_candidate()
         print("Last candidate (possibly with precision loss):\n", str(cand))
@@ -161,13 +140,12 @@ def main(max_epochs: int=40, n_jobs: int=16):
 
     print(" Validate learned Lyapunov candidate ".center(NCOLS, "="))
     validation = "N/A"
-    cover_roi = "N/A"
-    if cegus_status == "NO_CANDIDATE":
+    if cand is None:
         print("Skipped due to no feasible candidate.")
     else:
+        assert cand is not None
         x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(mod.X_DIM)]
         dxdt_exprs = mod.f_expr(x_vars)
-        cand = learner.get_candidate()
         lya_expr = cand.lya_expr(x_vars)
         lya_decay_rate = cand.lya_decay_rate()
         print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
@@ -183,38 +161,37 @@ def main(max_epochs: int=40, n_jobs: int=16):
             print(f"Counterexample:\n{result}")
         validation = (result is None)
 
+    if out_dir is None:  # Skip plotting
+        return cand
 
     fig_err = viz_region_stats(mod.X_LIM, last_approx, cex_regions)
-    f_name = f"err-{mod.__name__}-cover-{'x'.join(str(n) for n in init_part)}.png"
-    f_path = OUT_DIR / f_name
+    f_name = f"err-cover-{'x'.join(str(n) for n in init_part)}.png"
+    f_path = out_dir / f_name
     fig_err.savefig(f_path)  # type: ignore
     plt.clf()
     print(f'The plot is saved to "{f_path}".')
 
     if mod.X_DIM != 2:  # Support plotting 2D systems only
-        return
+        return cand
 
     fig_cover = plt.figure()
     fig_cover.suptitle(f"Cover of ROI for {mod.__name__}")
     ax = fig_cover.add_subplot()
     ax.set_title(
         f"CEGuS Status: {cegus_status}.\n"
-        f"Is True Lyapunov: {str(validation)}. "
-        f"BOA covers ROI: {str(cover_roi)}. \n"
+        f"Is True Lyapunov: {str(validation)}.\n"
         f"# epoch: {last_epoch}. "
         f"# total samples: {len(last_approx.x_values)}. "
         f"Time: {cegus_time_usage:.3f}s")
     viz_regions_2d(ax, mod, last_approx, cex_regions)
-    if cegus_status == "FOUND":
+    if cand:
         viz_basin_2d(ax, mod, learner.get_candidate())
     ax.set_aspect("equal")
     fig_cover.tight_layout()
-    f_name = f"cegus-{mod.__name__}-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
-    f_path = OUT_DIR / f_name
+    f_name = f"cegus-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
+    f_path = out_dir / f_name
     plt.savefig(f_path)
     plt.clf()
     print(f'The plot is saved to "{f_path}".')
 
-
-if __name__ == "__main__":
-    main()
+    return cand
