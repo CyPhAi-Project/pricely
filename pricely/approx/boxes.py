@@ -1,8 +1,8 @@
 from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_and  # type:ignore
 import numpy as np
-from typing import Callable, Hashable, Sequence, Tuple, Union, overload
+from typing import Callable, Hashable, Optional, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import ROI, NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox, split_region
+from pricely.cegus_lyapunov import ROI, NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox
 from pricely.utils import gen_equispace_regions
 
 
@@ -58,6 +58,34 @@ class ConstantApprox(PLocalApprox):
 
     def func_exprs(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Sequence[Expr]:
         return [Expr(v) for v in self._y]  # Constant value approximation
+
+
+def split_region(
+    region: NDArrayFloat,
+    box: NDArrayFloat
+) -> Optional[Tuple[NDArrayFloat, np.intp, float]]:
+    assert region.shape[0] == 3
+    cex_lb, cex_ub = box
+    x, lb, ub = region
+    if np.all(np.logical_and(cex_lb <= x, x <= cex_ub)):
+        raise RuntimeError("Sampled state is inside cex box")
+    # Clip the cex bounds to be inside the region.
+    cex_lb = cex_lb.clip(min=lb, max=ub)
+    cex_ub = cex_ub.clip(min=lb, max=ub)
+    cex = (cex_lb + cex_ub) / 2.0
+
+    # Decide the separator between the existing sample and the cex box
+    # Choose the dimension with the max distance to cut
+    axes_aligned_dist = (cex_lb - x).clip(min=0.0) + (x - cex_ub).clip(min=0.0)
+    cut_axis = np.argmax(axes_aligned_dist)
+
+    if x[cut_axis] < cex_lb[cut_axis]:
+        box_edge = cex_lb[cut_axis]
+    else:
+        assert x[cut_axis] > cex_lb[cut_axis]
+        box_edge = cex_ub[cut_axis]
+    cut_value = (x[cut_axis] + box_edge) / 2.0
+    return cex, cut_axis, cut_value
 
 
 class AxisAlignedBoxes(PApproxDynamic):
