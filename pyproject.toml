@@ -8,7 +8,7 @@ version = "0.1.0"
 authors = [
   { name="Chiao Hsieh", email="hsieh.chiao.7k@kyoto-u.ac.jp" },
 ]
-description = "PrI CounterExample-guided Lyapunov function."
+description = "PRIoritzed CounterExample-guided LYapunov function."
 # readme = "README.md"
 requires-python = ">=3.8"
 # license = {file = "LICENSE"}
@@ -20,7 +20,6 @@ classifiers = [
 dependencies = [
     'cvxpy',
     'dreal',
-    'joblib',
     'numpy',
     'scipy',
     'tqdm'

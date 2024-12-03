@@ -1,8 +1,6 @@
 from dreal import Expression as Expr, Variable  # type: ignore
-import itertools
 import numpy as np
 from typing import Optional, Sequence
-import warnings
 
 from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate
 
