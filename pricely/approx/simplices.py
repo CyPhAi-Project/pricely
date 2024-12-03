@@ -4,7 +4,7 @@ from scipy.spatial import Delaunay, QhullError
 from scipy.spatial.distance import pdist
 from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import NDArrayFloat, ROI, PApproxDynamic, PLocalApprox, PLyapunovCandidate
+from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, ROI, PApproxDynamic, PLocalApprox, PLyapunovCandidate
 
 
 class DatasetApproxBase(PLocalApprox):
@@ -160,8 +160,9 @@ class SimplicialComplex(PApproxDynamic):
         self._f_bbox =  f_bbox
         self._lip_bbox = lip_bbox
 
-        self._y_values = f_bbox(self.x_values, self.u_values)
-        self._lips = self._calc_lipschitz()
+        self._y_values = f_bbox(self._x_values, self._u_values)
+        self._notin_roi_indices = self._notin_roi(self._x_values)
+        self._lip_values = self._calc_lipschitz()
 
     @classmethod
     def from_autonomous(
@@ -177,26 +178,13 @@ class SimplicialComplex(PApproxDynamic):
             f_bbox=lambda x, u: f_bbox(x),
             lip_bbox=lambda x, u: lip_bbox(x))
 
+    def _notin_roi(self, x_values: NDArrayFloat) -> NDArrayIndex:
+        # Find indices of samples outside of ROI
+        return np.nonzero(~self._x_roi.contains(x_values))[0]
+
     @property
-    def x_values(self) -> NDArrayFloat:
-        "Get sampled states"
+    def _x_values(self) -> NDArrayFloat:
         return self._triangulation.points
-
-    @property
-    def x_regions(self) -> NDArrayFloat:
-        "Get regions of states"
-        raise NotImplementedError
-        # return self._triangulation.points[self._triangulation.simplices]
-
-    @property
-    def u_values(self) -> NDArrayFloat:
-        "Get sampled inputs"
-        return self._u_values
-
-    @property
-    def y_values(self) -> NDArrayFloat:
-        "Get sampled outputs from black-box dynamics"
-        return self._y_values
 
     @property
     def x_dim(self) -> int:
@@ -205,6 +193,26 @@ class SimplicialComplex(PApproxDynamic):
     @property
     def u_dim(self) -> int:
         return self._u_roi.shape[1]
+    
+    @property
+    def num_samples(self) -> int:
+        return len(self._x_values)
+
+    @property
+    def samples(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        return self._x_values, self._u_values, self._y_values
+
+    @property
+    def num_samples_in_roi(self) -> int:
+        return self.num_samples - len(self._notin_roi_indices)
+
+    @property
+    def samples_in_roi(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        row_mask = np.ones(shape=self.num_samples, dtype=bool)
+        row_mask[self._notin_roi_indices] = False
+        return self._x_values[row_mask], \
+            self._u_values[row_mask], \
+            self._y_values[row_mask]
 
     def __len__(self) -> int:
         return len(self._triangulation.simplices)
@@ -224,18 +232,18 @@ class SimplicialComplex(PApproxDynamic):
         trans = self._triangulation.transform[item]
         if np.any(np.isnan(trans)):  # A degenerate simplex
             return AnyBoxConstant(
-                self.x_values[vertex_idxs],
-                self.u_values[vertex_idxs],
-                self.y_values[vertex_idxs],
-                lip=self._lips[item])
+                self._x_values[vertex_idxs],
+                self._u_values[vertex_idxs],
+                self._y_values[vertex_idxs],
+                lip=self._lip_values[item])
         # else:
         return AnySimplexConstant(
             trans,
-            self.x_values[vertex_idxs],
-            self.u_values[vertex_idxs],
-            self.y_values[vertex_idxs],
-            hash_key=self.x_values[np.sort(vertex_idxs)].tobytes(),
-            lip=self._lips[item])
+            self._x_values[vertex_idxs],
+            self._u_values[vertex_idxs],
+            self._y_values[vertex_idxs],
+            hash_key=self._x_values[np.sort(vertex_idxs)].tobytes(),
+            lip=self._lip_values[item])
 
     def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
         cex_regions = np.asfarray([box for j, box in cex_boxes])
@@ -250,14 +258,17 @@ class SimplicialComplex(PApproxDynamic):
                 restart=10*len(new_x_values)>=len(self._triangulation.points))
         except QhullError as e:
             raise RuntimeError("Exception in triangulation.")
-        
+
+        new_notin_roi_indices = self._notin_roi(new_x_values) + len(self._notin_roi_indices)
+        self._notin_roi_indices = np.concatenate((self._notin_roi_indices, new_notin_roi_indices))
+
         new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
         self._u_values = np.row_stack((self._u_values, new_u_values))
         self._y_values = np.row_stack((self._y_values, new_y_values))
 
         # NOTE Lipschitz constants follow the number of regions instead of samples.
-        self._lips = self._calc_lipschitz()
+        self._lip_values = self._calc_lipschitz()
 
     def _calc_lipschitz(self) -> NDArrayFloat:
         x_simplices = self._triangulation.points[self._triangulation.simplices]

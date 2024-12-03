@@ -2,7 +2,7 @@ from dreal import Expression as Expr, Formula, sqrt as Sqrt, Variable, logical_a
 import numpy as np
 from typing import Callable, Hashable, Optional, Sequence, Tuple, Union, overload
 
-from pricely.cegus_lyapunov import ROI, NDArrayFloat, PLyapunovCandidate, PApproxDynamic, PLocalApprox
+from pricely.cegus_lyapunov import ROI, NDArrayFloat, NDArrayIndex, PLyapunovCandidate, PApproxDynamic, PLocalApprox
 from pricely.utils import gen_equispace_regions
 
 
@@ -91,24 +91,26 @@ def split_region(
 class AxisAlignedBoxes(PApproxDynamic):
     def __init__(
             self,
-            x_lim: NDArrayFloat, u_roi: NDArrayFloat,
+            x_roi: ROI, u_roi: NDArrayFloat,
             x_regions: NDArrayFloat, u_values: NDArrayFloat,
             f_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat],
             lip_bbox: Callable[[NDArrayFloat, NDArrayFloat], NDArrayFloat]) -> None:
+        x_lim = x_roi.x_lim
         assert x_lim.ndim == 2 and x_lim.shape[0] == 2
         assert u_roi.ndim == 2 and u_roi.shape[0] == 2
         assert x_regions.ndim == 3 and x_regions.shape[1] == 3 and x_regions.shape[2] == x_lim.shape[1]
         assert u_values.ndim == 2 and u_values.shape[1] == u_roi.shape[1]
         assert len(x_regions) == len(u_values)
 
-        self._x_lim = x_lim
+        self._x_roi = x_roi
         self._u_roi = u_roi
         self._x_regions = x_regions
         self._u_values = u_values.reshape((len(x_regions), -1))  # ensure to be 2D
         self._f_bbox =  f_bbox
         self._lip_bbox = lip_bbox
 
-        self._y_values = f_bbox(self.x_values, self.u_values)
+        self._y_values = f_bbox(self._x_values, self._u_values)
+        self._notin_roi_indices = self._notin_roi(self._x_values)
         self._lip_values = lip_bbox(x_regions, u_roi)
         assert len(self._x_regions) == len(self._y_values) and len(self._x_regions) == len(self._lip_values)
 
@@ -119,39 +121,49 @@ class AxisAlignedBoxes(PApproxDynamic):
         f_bbox: Callable[[NDArrayFloat], NDArrayFloat],
         lip_bbox: Callable[[NDArrayFloat], NDArrayFloat]):
         return cls(
-            x_lim=x_roi.x_lim,
+            x_roi=x_roi,
             u_roi=np.empty((2, 0)),
             x_regions=x_regions,
             u_values=np.empty((len(x_regions), 0)),
             f_bbox=lambda x, u: f_bbox(x),
             lip_bbox=lambda x, u: lip_bbox(x))
 
+    def _notin_roi(self, x_values: NDArrayFloat) -> NDArrayIndex:
+        # Find indices of samples outside of ROI
+        return np.nonzero(~self._x_roi.contains(x_values))[0]
+
     @property
-    def x_values(self) -> NDArrayFloat:
-        "Get sampled states"
+    def _x_values(self) -> NDArrayFloat:
+        "Get all sampled states"
         return self._x_regions[:, 0, :]
 
     @property
-    def x_regions(self) -> NDArrayFloat:
-        return self._x_regions
-
-    @property
-    def u_values(self) -> NDArrayFloat:
-        "Get sampled inputs"
-        return self._u_values
-
-    @property
-    def y_values(self) -> NDArrayFloat:
-        "Get sampled outputs from black-box dynamics"
-        return self._y_values
-
-    @property
     def x_dim(self) -> int:
-        return self._x_lim.shape[1]
+        return self._x_roi.x_lim.shape[1]
 
     @property
     def u_dim(self) -> int:
         return self._u_roi.shape[1]
+
+    @property
+    def num_samples(self) -> int:
+        return len(self._x_values)
+
+    @property
+    def samples(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        return self._x_values, self._u_values, self._y_values
+
+    @property
+    def num_samples_in_roi(self) -> int:
+        return self.num_samples - len(self._notin_roi_indices)
+
+    @property
+    def samples_in_roi(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        row_mask = np.ones(shape=self.num_samples, dtype=bool)
+        row_mask[self._notin_roi_indices] = False
+        return self._x_values[row_mask], \
+            self._u_values[row_mask], \
+            self._y_values[row_mask]
 
     def __len__(self) -> int:
         return len(self._x_regions)
@@ -168,8 +180,8 @@ class AxisAlignedBoxes(PApproxDynamic):
         assert isinstance(item, int)
         return ConstantApprox(
             x_region=self._x_regions[item],
-            u=self.u_values[item],
-            y=self.y_values[item],
+            u=self._u_values[item],
+            y=self._y_values[item],
             lip=self._lip_values[item])
 
     def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
@@ -179,6 +191,9 @@ class AxisAlignedBoxes(PApproxDynamic):
         new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
         new_lip_values = np.atleast_1d(self._lip_bbox(new_regions, self._u_roi))
+
+        new_notin_roi_indices = self._notin_roi(new_x_values) + len(self._notin_roi_indices)
+        self._notin_roi_indices = np.concatenate((self._notin_roi_indices, new_notin_roi_indices))
 
         self._x_regions = np.concatenate((self._x_regions, new_regions), axis=0)
         self._u_values = np.row_stack((self._u_values, new_u_values))
@@ -238,7 +253,7 @@ def test_approx():
     x_regions =gen_equispace_regions([2, 3, 4], X_LIM)
     u_values = np.zeros((len(x_regions), 2))
     approx = AxisAlignedBoxes(
-        X_LIM, U_ROI, x_regions, u_values, f_bbox, lip_bbox)
+        ROI(x_lim=X_LIM, abs_x_lb=2**-5), U_ROI, x_regions, u_values, f_bbox, lip_bbox)
 
 if __name__ == "__main__":
     test_approx()

@@ -89,14 +89,6 @@ class SMTVerifier(PLyapunovVerifier):
     def u_dim(self) -> int:
         return self._u_dim
 
-    def filter_idx(self, x_values: NDArrayFloat) -> NDArrayIndex:
-        ## Filter samples outside of ROI
-        ## TODO Maybe consider basin of attraction instead of ROI
-        return np.logical_and.reduce((
-            np.max(np.abs(x_values) >= self._abs_x_lb, axis=1),
-            np.linalg.norm(x_values, axis=1) >= self._x_norm_lb,
-            np.linalg.norm(x_values, axis=1) <= self._x_norm_ub))
-
     def set_lyapunov_candidate(
             self, cand: PLyapunovCandidate):
         self._lya_cand = cand

@@ -36,7 +36,7 @@ def add_level_sets(
 
 def add_valid_regions(ax: Axes, approx: PApproxDynamic, cex_regions):
     if isinstance(approx, AxisAlignedBoxes):
-        _add_axis_aligned_boxes(ax, approx.x_regions, cex_regions)
+        _add_axis_aligned_boxes(ax, approx._x_regions, cex_regions)
     elif isinstance(approx, SimplicialComplex):
         _add_simplicial_complex(ax, approx._triangulation, cex_regions)
     else:

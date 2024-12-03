@@ -18,7 +18,7 @@ class ROI(NamedTuple):
     Define a region of interest by constraining the vector x as below:
     x_lim[0, i] <= x[i] <= x_lim[1, i]
     x_norm_lim[0] <= ‖x‖ <= x_norm_lim[1]
-    abs_x_lb <= min(abs(x[i]))
+    abs_x_lb <= max(abs(x[i]))
     """
     x_lim: NDArrayFloat
     abs_x_lb: float
@@ -107,26 +107,26 @@ class PLocalApprox(Protocol):
 class PApproxDynamic(Sequence[PLocalApprox]):
     @property
     @abc.abstractmethod
-    def x_values(self) -> NDArrayFloat:
-        "Get sampled states"
-        raise NotImplementedError
-    
-    @property
-    @abc.abstractmethod
-    def x_regions(self) -> NDArrayFloat:
-        "Get regions of states"
+    def num_samples(self) -> int:
+        "Number of all samples. Samples may include states out of ROI."
         raise NotImplementedError
 
     @property
     @abc.abstractmethod
-    def u_values(self) -> NDArrayFloat:
-        "Get sampled inputs"
+    def samples(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        "All samples as three arrays of the same length in the order of (x, u, y)"
         raise NotImplementedError
 
     @property
     @abc.abstractmethod
-    def y_values(self) -> NDArrayFloat:
-        "Get sampled outputs from black-box dynamics"
+    def num_samples_in_roi(self) -> int:
+        "Number of samples of which states are in ROI."
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def samples_in_roi(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+        "Samples with states in ROI as three arrays of the same length in the order of (x, u, y)"
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -138,10 +138,6 @@ class PLyapunovVerifier(Protocol):
     @property
     @abc.abstractmethod
     def x_dim(self) -> int:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def filter_idx(self, x_values: NDArrayFloat) -> NDArrayIndex:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -192,15 +188,12 @@ def cegus_lyapunov(
     outer_pbar = tqdm(
         iter(range(max_epochs)),
         desc="CEGuS Loop", ascii=True, leave=True, position=0, ncols=NCOLS,
-        postfix={"#Samples": len(curr_approx.x_values)})
+        postfix={"#Samples": curr_approx.num_samples})
     cex_regions = []
     obj_values = []
 
     ## Prepare dataset for learning
-    filter_idx = verifier.filter_idx(curr_approx.x_values)
-    x_values = curr_approx.x_values[filter_idx]
-    u_values = curr_approx.u_values[filter_idx]
-    y_values = curr_approx.y_values[filter_idx]
+    x_values, u_values, y_values = curr_approx.samples_in_roi
     for epoch in outer_pbar:
         # NOTE x_values is filtered 
         outer_pbar.set_postfix({"#Samples for learner": len(x_values)})
@@ -226,7 +219,7 @@ def cegus_lyapunov(
                 refinement_pbar.set_postfix({
                     "#Valid Regions": "?",
                     "#Total Regions": len(curr_approx),
-                    "#Samples": len(curr_approx.x_values)})
+                    "#Samples": curr_approx.num_samples})
                 tqdm.write("Current candidate is neither δ-provable nor falsified.")
                 return CEGuSResult("PRECISION_LIMIT", epoch, curr_approx, cex_regions)
 
@@ -275,22 +268,19 @@ def cegus_lyapunov(
                 "#Total Regions": len(curr_approx),
                 "#Valid Regions": len(curr_approx) - len(cex_regions),
                 "#VC Queries": len(future_list),
-                "#Samples": len(curr_approx.x_values)})
+                "#Samples": curr_approx.num_samples})
             if len(cex_regions) == 0:
                 assert num_timeouts == 0
                 # Lyapunov function candidate passed
                 return CEGuSResult("FOUND", epoch, curr_approx, cex_regions)
-            if len(curr_approx.x_values) + len(cex_regions) >= max_num_samples:
+            if curr_approx.num_samples + len(cex_regions) >= max_num_samples:
                 tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
                 return CEGuSResult("SAMPLE_LIMIT", epoch, curr_approx, cex_regions)
 
             # Update the cover with counterexamples
             curr_approx.add(cex_regions, cand)
 
-            filter_idx = verifier.filter_idx(curr_approx.x_values)
-            x_values = curr_approx.x_values[filter_idx]
-            u_values = curr_approx.u_values[filter_idx]
-            y_values = curr_approx.y_values[filter_idx]
+            x_values, u_values, y_values = curr_approx.samples_in_roi
             if np.any(cand.lya_values(x_values) <= 0.0) or \
                     np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
                 # Found true counterexamples. Break to learn a new candidate.

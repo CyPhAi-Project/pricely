@@ -1,6 +1,5 @@
 from dreal import Config, Variable  # type: ignore
 import numpy as np
-from math import factorial
 from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -54,37 +53,19 @@ def viz_basin_2d(ax, mod, cand: QuadraticLyapunov):
 
 
 def viz_region_stats(x_lim, approx, cex_regions):
-    x_dim = x_lim.shape[1]
-
-    if not isinstance(approx, SimplicialComplex):
-        # TODO
-        print("TODO plot statistics for boxes")
-        return plt.figure()
-    print(" Plotting volumes of all regions in descending order".center(NCOLS, "="))
+    print(" Plotting diameters of all regions in descending order".center(NCOLS, "="))
     fig = plt.figure()
-    fig.suptitle("Volumes of regions")
+    fig.suptitle("Diameters of regions")
     ax = fig.add_subplot(211)
 
-    tri = approx._triangulation
+    diams = [approx[i].domain_diameter for i in range(len(approx))]
+    diams = np.asfarray(diams)
+    sorted_idx = np.flip(np.argsort(diams))
 
-    # max_dists = [pdist(approx.x_values[simplex]).max() for simplex in tri.simplices]
-    # max_dists.sort(reverse=True)
-    # ax.bar(np.arange(len(max_dists)), max_dists, width=1.0)
-
-    vols = []
-    n_fact = factorial(x_dim)
-    for simplex in tri.simplices:
-        x_vertices = approx.x_values[simplex]
-        vol = abs(np.linalg.det((x_vertices[1:] - x_vertices[0])))/n_fact
-        vols.append(vol)
-    vols = np.asfarray(vols)
-    sorted_idx = np.flip(np.argsort(vols))
-
-    print(f"Vol sum: {sum(vols)}")
-    ax.bar(np.arange(len(vols)), vols[sorted_idx], color="b", width=1.0)
+    ax.bar(np.arange(len(diams)), diams[sorted_idx], color="b", width=1.0)
 
     ax1 = fig.add_subplot(212)
-    ax1.scatter(vols[sorted_idx], approx._lips[sorted_idx], s=0.2)
+    ax1.scatter(diams[sorted_idx], approx._lip_values[sorted_idx], s=0.2)
     fig.tight_layout()
     return fig
 
@@ -191,7 +172,7 @@ def main(mod, out_dir: Optional[Path]=None,
         f"CEGuS Status: {cegus_status}.\n"
         f"Is True Lyapunov: {str(validation)}.\n"
         f"# epoch: {last_epoch}. "
-        f"# total samples: {len(last_approx.x_values)}. "
+        f"# total samples: {last_approx.num_samples}. "
         f"Time: {cegus_time_usage:.3f}s")
     viz_regions_2d(ax, mod, last_approx, cex_regions)
     if cand:
