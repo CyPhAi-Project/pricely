@@ -130,7 +130,8 @@ class PApproxDynamic(Sequence[PLocalApprox]):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate)\
+            -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
         raise NotImplementedError
 
 
@@ -157,8 +158,12 @@ def parallelizable_verify(
         verifier: PLyapunovVerifier,
         f_approx_j: PLocalApprox):
     signal(SIGINT, handler)
-    reg_repr = f_approx_j.in_domain_repr()
-    return reg_repr, verifier.find_cex(f_approx_j), f_approx_j.domain_diameter
+    return verifier.find_cex(f_approx_j)
+
+
+class DeltaProverResult(NamedTuple):
+    status: Literal["FOUND", "FALSIFIED", "SAMPLE_LIMIT", "PRECISION_LIMIT"]
+    cex_regions: Sequence[Tuple[int, NDArrayFloat]]
 
 
 class CEGuSResult(NamedTuple):
@@ -166,6 +171,89 @@ class CEGuSResult(NamedTuple):
     epoch: int
     approx: PApproxDynamic
     cex_regions: Sequence[Tuple[int, NDArrayFloat]]
+
+
+def verify_delta_provability(
+        verifier: PLyapunovVerifier,
+        curr_approx: PApproxDynamic,
+        cand: PLyapunovCandidate,
+        diam_lb: float,
+        max_num_samples: int = 5*10**5,
+        n_jobs: int = 1,
+        timeout_per_job: Optional[float] = 30.0):
+    refinement_pbar = tqdm(
+        desc=f"Refinement Loop", initial=-1,
+        ascii=True, leave=None, position=1, ncols=NCOLS)
+    verified_regions = set()
+    stop_refine = False
+    cex_regions = []
+    while not stop_refine:
+        refinement_pbar.update(1)
+
+        new_verified_regions = set()
+        cex_regions.clear()
+        with Pool(n_jobs) as p:
+            # XXX Need to store and maintain the index j for retriving the same region again
+            future_list = []
+            for j in tqdm(range(len(curr_approx)),
+                          desc="Check cache", ascii=True, leave=None, position=2, ncols=NCOLS):
+                reg_repr = curr_approx[j].in_domain_repr()
+                if reg_repr in verified_regions:
+                    new_verified_regions.add(reg_repr)
+                else:
+                    future_list.append((j, p.apply_async(
+                        func=parallelizable_verify,
+                        args=((verifier, curr_approx[j])))))
+
+            num_timeouts = 0
+            for j, future in tqdm(future_list,
+                                  desc=f"Verify", ascii=True, leave=None, position=2, ncols=NCOLS):
+                try:
+                    box = future.get(timeout_per_job)
+                except TimeoutError:
+                    num_timeouts += 1
+                    cex = curr_approx[j].x_witness
+                    box = np.row_stack((cex, cex))
+
+                if box is None:
+                    new_verified_regions.add(curr_approx[j].in_domain_repr())
+                else:
+                    stop_refine = stop_refine or (curr_approx[j].domain_diameter <= diam_lb)
+                    cex_regions.append((j, box))
+        verified_regions.clear()
+        verified_regions = new_verified_regions
+
+        if num_timeouts > 0:
+            tqdm.write(f'Regional verifier times out for {num_timeouts} regions')
+        refinement_pbar.set_postfix({
+            "#Total Regions": len(curr_approx),
+            "#Valid Regions": len(curr_approx) - len(cex_regions),
+            "#VC Queries": len(future_list),
+            "#Samples": curr_approx.num_samples})
+        if len(cex_regions) == 0:
+            assert num_timeouts == 0
+            # Lyapunov function candidate passed
+            return DeltaProverResult("FOUND", cex_regions)
+        if curr_approx.num_samples + len(cex_regions) >= max_num_samples:
+            tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
+            return DeltaProverResult("SAMPLE_LIMIT", cex_regions)
+
+        # Update the cover with counterexamples
+        x_values, u_values, y_values = curr_approx.add(cex_regions, cand)
+
+        if np.any(cand.lya_values(x_values) <= 0.0) or \
+                np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
+            # Found true counterexamples. Break to learn a new candidate.
+            return DeltaProverResult("FALSIFIED", cex_regions)
+        # End of the while-loop
+
+    # stop_refine == True
+    refinement_pbar.set_postfix({
+        "#Valid Regions": "?",
+        "#Total Regions": len(curr_approx),
+        "#Samples": curr_approx.num_samples})
+    tqdm.write("Current candidate is neither δ-provable nor falsified.")
+    return DeltaProverResult("PRECISION_LIMIT", cex_regions)
 
 
 def cegus_lyapunov(
@@ -192,10 +280,10 @@ def cegus_lyapunov(
     cex_regions = []
     obj_values = []
 
-    ## Prepare dataset for learning
-    x_values, u_values, y_values = curr_approx.samples_in_roi
     for epoch in outer_pbar:
-        # NOTE x_values is filtered 
+        ## Prepare dataset for learning
+        x_values, u_values, y_values = curr_approx.samples_in_roi
+        # NOTE x_values is filtered
         outer_pbar.set_postfix({"#Samples for learner": len(x_values)})
         # Learn a new candidate
         objs = learner.fit_loop(
@@ -208,84 +296,13 @@ def cegus_lyapunov(
         obj_values.extend(objs)
         cand = learner.get_candidate()
         verifier.set_lyapunov_candidate(cand)
-        stop_refine = False
-        verified_regions = set()
 
-        refinement_pbar = tqdm(
-            desc=f"Refinement Loop",
-            ascii=True, leave=None, position=1, ncols=NCOLS)
-        while True:
-            if stop_refine:
-                refinement_pbar.set_postfix({
-                    "#Valid Regions": "?",
-                    "#Total Regions": len(curr_approx),
-                    "#Samples": curr_approx.num_samples})
-                tqdm.write("Current candidate is neither δ-provable nor falsified.")
-                return CEGuSResult("PRECISION_LIMIT", epoch, curr_approx, cex_regions)
-
-            num_timeouts = 0
-            cex_regions.clear()
-            with Pool(n_jobs) as p:
-                new_verified_regions = set()
-                if len(verified_regions) <= len(curr_approx) // 4:
-                    future_list = [(j, p.apply_async(
-                            func=parallelizable_verify,
-                            args=((verifier, curr_approx[j]))))
-                        for j in range(len(curr_approx))]
-                else:
-                    # Reuse verified regions only when it is worthwhile.
-                    future_list = []
-                    for j in tqdm(range(len(curr_approx)),
-                                  desc="Check cache", ascii=True, leave=None, position=2, ncols=NCOLS):
-                        reg_repr = curr_approx[j].in_domain_repr()
-                        if reg_repr in verified_regions:
-                            new_verified_regions.add(reg_repr)
-                        else:
-                            future_list.append((j, p.apply_async(
-                                func=parallelizable_verify,
-                                args=((verifier, curr_approx[j])))))
-
-                for j, future in tqdm(future_list,
-                                   desc=f"Verify", ascii=True, leave=None, position=2, ncols=NCOLS):
-                    try:
-                        reg_repr, box, diam = future.get(timeout_per_job)
-                        if box is None:
-                            new_verified_regions.add(reg_repr)
-                        else:
-                            stop_refine = stop_refine or (diam <= diam_lb)
-                            cex_regions.append((j, box))
-                    except TimeoutError:
-                        num_timeouts += 1
-                        cex = curr_approx[j].x_witness
-                        box = np.row_stack((cex, cex))
-                        cex_regions.append((j, box))
-                verified_regions.clear()
-                verified_regions = new_verified_regions
-
-            if num_timeouts > 0:
-                tqdm.write(f'Regional verifier times out for {num_timeouts} regions at {epoch}it')
-            refinement_pbar.set_postfix({
-                "#Total Regions": len(curr_approx),
-                "#Valid Regions": len(curr_approx) - len(cex_regions),
-                "#VC Queries": len(future_list),
-                "#Samples": curr_approx.num_samples})
-            if len(cex_regions) == 0:
-                assert num_timeouts == 0
-                # Lyapunov function candidate passed
-                return CEGuSResult("FOUND", epoch, curr_approx, cex_regions)
-            if curr_approx.num_samples + len(cex_regions) >= max_num_samples:
-                tqdm.write(f"Exceeding max number of samples {max_num_samples} in next iteration.")
-                return CEGuSResult("SAMPLE_LIMIT", epoch, curr_approx, cex_regions)
-
-            # Update the cover with counterexamples
-            curr_approx.add(cex_regions, cand)
-
-            x_values, u_values, y_values = curr_approx.samples_in_roi
-            if np.any(cand.lya_values(x_values) <= 0.0) or \
-                    np.any(cand.lie_der_values(x_values, y_values) >= 0.0):
-                # Found true counterexamples. Break to learn a new candidate.
-                break
-            refinement_pbar.update(1)
+        res = verify_delta_provability(
+            verifier, curr_approx, cand,
+            diam_lb, max_num_samples, n_jobs, timeout_per_job)
+        if res.status != "FALSIFIED":
+            return CEGuSResult(res.status, epoch, curr_approx, res.cex_regions)
+        # else: continue
 
     outer_pbar.close()
 

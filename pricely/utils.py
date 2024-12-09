@@ -1,9 +1,9 @@
 from dreal import Box, CheckSatisfiability, Config, Expression as Expr, Variable, logical_and, logical_or  # type: ignore
 import numpy as np
 from numpy.typing import ArrayLike
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
-from pricely.cegus_lyapunov import ROI
+from pricely.cegus_lyapunov import NDArrayIndex, NDArrayFloat, ROI
 
 
 def _gen_neg_lya_cond(
@@ -27,6 +27,14 @@ def pretty_sub(i: int) -> str:
         i = i // 10
         rev_str.append(chr(0x2080 + (i % 10)))
     return "".join(reversed(rev_str))
+
+
+def exclude_rows(
+        x_values: NDArrayFloat, u_values: NDArrayFloat, y_values: NDArrayFloat,
+        exclude_indices: NDArrayIndex) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
+    row_mask = np.ones(shape=len(x_values), dtype=bool)
+    row_mask[exclude_indices] = False
+    return x_values[row_mask], u_values[row_mask], y_values[row_mask]
 
 
 def check_lyapunov_roi(

@@ -3,7 +3,7 @@ import numpy as np
 from typing import Callable, Hashable, Optional, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import ROI, NDArrayFloat, NDArrayIndex, PLyapunovCandidate, PApproxDynamic, PLocalApprox
-from pricely.utils import gen_equispace_regions
+from pricely.utils import exclude_rows, gen_equispace_regions
 
 
 class ConstantApprox(PLocalApprox):
@@ -159,11 +159,9 @@ class AxisAlignedBoxes(PApproxDynamic):
 
     @property
     def samples_in_roi(self) -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
-        row_mask = np.ones(shape=self.num_samples, dtype=bool)
-        row_mask[self._notin_roi_indices] = False
-        return self._x_values[row_mask], \
-            self._u_values[row_mask], \
-            self._y_values[row_mask]
+        return exclude_rows(
+            self._x_values, self._u_values, self._y_values,
+            self._notin_roi_indices)
 
     def __len__(self) -> int:
         return len(self._x_regions)
@@ -184,7 +182,8 @@ class AxisAlignedBoxes(PApproxDynamic):
             y=self._y_values[item],
             lip=self._lip_values[item])
 
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) \
+            -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
         new_regions = self._split_regions(cex_boxes)
 
         new_x_values = new_regions[:, 0, :]
@@ -192,8 +191,9 @@ class AxisAlignedBoxes(PApproxDynamic):
         new_y_values = self._f_bbox(new_x_values, new_u_values)
         new_lip_values = np.atleast_1d(self._lip_bbox(new_regions, self._u_roi))
 
-        new_notin_roi_indices = self._notin_roi(new_x_values) + len(self._notin_roi_indices)
-        self._notin_roi_indices = np.concatenate((self._notin_roi_indices, new_notin_roi_indices))
+        new_notin_roi_indices = self._notin_roi(new_x_values)
+        self._notin_roi_indices = np.concatenate(
+            (self._notin_roi_indices, new_notin_roi_indices + len(self._notin_roi_indices)))
 
         self._x_regions = np.concatenate((self._x_regions, new_regions), axis=0)
         self._u_values = np.row_stack((self._u_values, new_u_values))
@@ -201,6 +201,9 @@ class AxisAlignedBoxes(PApproxDynamic):
         self._lip_values = np.concatenate((self._lip_values, new_lip_values))
         assert len(self._x_regions) == len(self._u_values) and len(self._x_regions) == len(self._y_values)
 
+        return exclude_rows(
+            new_x_values, new_u_values, new_y_values,
+            new_notin_roi_indices)
 
     def _split_regions(
             self,

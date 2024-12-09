@@ -5,6 +5,7 @@ from scipy.spatial.distance import pdist
 from typing import Callable, Hashable, Sequence, Tuple, Union, overload
 
 from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, ROI, PApproxDynamic, PLocalApprox, PLyapunovCandidate
+from pricely.utils import exclude_rows
 
 
 class DatasetApproxBase(PLocalApprox):
@@ -245,7 +246,8 @@ class SimplicialComplex(PApproxDynamic):
             hash_key=self._x_values[np.sort(vertex_idxs)].tobytes(),
             lip=self._lip_values[item])
 
-    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) -> None:
+    def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) \
+            -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
         cex_regions = np.asfarray([box for j, box in cex_boxes])
         assert cex_regions.shape[1] == 2 and cex_regions.shape[2] == self.x_dim
         new_x_values = cex_regions.mean(axis=1)
@@ -259,8 +261,9 @@ class SimplicialComplex(PApproxDynamic):
         except QhullError as e:
             raise RuntimeError("Exception in triangulation.")
 
-        new_notin_roi_indices = self._notin_roi(new_x_values) + len(self._notin_roi_indices)
-        self._notin_roi_indices = np.concatenate((self._notin_roi_indices, new_notin_roi_indices))
+        new_notin_roi_indices = self._notin_roi(new_x_values)
+        self._notin_roi_indices = np.concatenate(
+            (self._notin_roi_indices, new_notin_roi_indices + len(self._notin_roi_indices)))
 
         new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
@@ -269,6 +272,7 @@ class SimplicialComplex(PApproxDynamic):
 
         # NOTE Lipschitz constants follow the number of regions instead of samples.
         self._lip_values = self._calc_lipschitz()
+        return exclude_rows(new_x_values, new_u_values, new_y_values, new_notin_roi_indices)
 
     def _calc_lipschitz(self) -> NDArrayFloat:
         x_simplices = self._triangulation.points[self._triangulation.simplices]
