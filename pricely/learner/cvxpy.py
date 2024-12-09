@@ -44,7 +44,7 @@ class QuadraticLearner(PLyapunovLearner):
             self._sym_mat <= self._v_max,
             xPx >= self._eps,  # g_x(P) < 0 in paper
             yPx <= -self._eps,  # h_x(P) < 0 in paper
-            self._eps <= 2**-10
+            self._eps <= 2**10*self._tol
         ]
         obj = cp.Maximize(
             cp.sum(cp.log(self._v_max - self._sym_mat)) + cp.sum(cp.log(self._v_max + self._sym_mat)) +
