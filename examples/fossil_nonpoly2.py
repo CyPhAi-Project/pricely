@@ -13,13 +13,13 @@ from typing import Sequence
 X_DIM = 3
 X_NORM_LB = 0.1
 X_NORM_UB = 1.0
-
 X_LIM = np.array([
     [-X_NORM_UB]*X_DIM, # Lower bounds
     [+X_NORM_UB]*X_DIM  # Upper bounds
 ])
 assert X_LIM.shape == (2, X_DIM)
 ABS_X_LB = X_NORM_LB/np.sqrt(X_DIM)
+
 
 KNOWN_QUAD_LYA = np.array([
     [0.25, 0, 0],

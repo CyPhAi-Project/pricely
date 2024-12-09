@@ -152,6 +152,14 @@ def main(mod, out_dir: Optional[Path]=None,
             print(f"Counterexample:\n{result}")
         validation = (result is None)
 
+    print(" Statistics ".center(NCOLS, "="))
+    print(f"CEGuS Status: {cegus_status}.\n"
+        f"Is True Lyapunov: {validation}.\n"
+        f"# epoch: {last_epoch}. "
+        f"# total samples: {last_approx.num_samples}. "
+        f"# total regions: {len(last_approx)}. "
+        f"Time: {cegus_time_usage:.3f}s")
+
     if out_dir is None or len(last_approx) >= 2*10**4:  # Skip plotting
         return cand
 
