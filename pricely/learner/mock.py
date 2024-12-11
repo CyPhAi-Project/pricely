@@ -1,6 +1,5 @@
-from dreal import Expression as Expr, Variable  #type: ignore
 import numpy as np
-from typing import Optional, Sequence, Tuple
+from typing import Optional
 
 from pricely.cegus_lyapunov import NDArrayFloat, PLyapunovCandidate, PLyapunovLearner
 from pricely.candidates import QuadraticLyapunov

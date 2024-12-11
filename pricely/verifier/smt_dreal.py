@@ -2,7 +2,7 @@ from dreal import CheckSatisfiability, Config, Expression as Expr, sqrt as Sqrt,
 import numpy as np
 from typing import NamedTuple, Optional, Sequence, Union
 
-from pricely.cegus_lyapunov import NDArrayFloat, NDArrayIndex, ROI, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
+from pricely.cegus_lyapunov import NDArrayFloat, ROI, PLocalApprox, PLyapunovCandidate, PLyapunovVerifier
 from pricely.utils import pretty_sub
 
 
@@ -67,7 +67,7 @@ class SMTVerifier(PLyapunovVerifier):
             config: Union[Config, ConfigTuple] = ConfigTuple()) -> None:
         x_lim, abs_x_lb, (x_norm_lb, x_norm_ub) = x_roi
         assert x_lim.shape[0] == 2 and x_lim.shape[1] >= 1
-        assert np.all(np.asfarray(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
+        assert np.all(np.array(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
         assert 0.0 <= x_norm_lb <= x_norm_ub
 
         self._x_roi = x_roi
@@ -79,7 +79,7 @@ class SMTVerifier(PLyapunovVerifier):
             self._conf_tup = config
         else:  # Explicit copy and convert to Python tuple for pickling
             self._conf_tup = from_dreal(config)
-        self._lya_cand = None
+        self._lya_cand: Optional[PLyapunovCandidate] = None
 
     @property
     def x_dim(self) -> int:
@@ -104,7 +104,7 @@ class SMTVerifier(PLyapunovVerifier):
         if not result:
             return None
         else:
-            box_np = np.asfarray(
+            box_np = np.array(
                 [[result[var].lb(), result[var].ub()] for var in x_vars]).transpose()
             return box_np
         
@@ -118,7 +118,7 @@ class SMTVerifier(PLyapunovVerifier):
         u_vars = [Variable(f"u{pretty_sub(i)}") for i in range(self.u_dim)]  # Temp variables for input
         y_vars = [Variable(f"ŷ{pretty_sub(i)}") for i in range(self.x_dim)]
         err_bnd_var = Variable("ε(x,k(x))")
-        lya_cand_expr = lya.lya_expr(x_vars)
+        lya_cand_expr: Expr = lya.lya_expr(x_vars)
         der_lya_cand_exprs = [lya_cand_expr.Differentiate(x) for x in x_vars]
         decay_expr = Expr(lya.lya_decay_rate())
         ## Build ∇V(x)⋅ŷ
@@ -142,8 +142,8 @@ class SMTVerifier(PLyapunovVerifier):
         vcs_der_lya_hat = []
         vcs_bbox_cond = []
         for k in range(f_approx_j.num_approxes):
-            y_exprs = f_approx_j.func_exprs(x_vars, u_vars, k)
-            err_bnd_expr = f_approx_j.error_bound_expr(x_vars, u_vars, k)
+            y_exprs: Sequence[Expr] = f_approx_j.func_exprs(x_vars, u_vars, k)
+            err_bnd_expr: Expr = f_approx_j.error_bound_expr(x_vars, u_vars, k)
             sub_approx = dict(
                 [(yi, ei) for yi, ei in zip(y_vars, y_exprs)] +
                 [(err_bnd_var, err_bnd_expr)])
@@ -156,7 +156,7 @@ class SMTVerifier(PLyapunovVerifier):
             falsify_lya_pos, falsify_der_lya_hat, falsify_bbox_cond)
 
         # Substitute with the current controller
-        ctrl_exprs = lya.ctrl_exprs(x_vars)
+        ctrl_exprs: Sequence[Expr] = lya.ctrl_exprs(x_vars)
         sub_input = dict((ui, ei) for ui, ei in zip(u_vars, ctrl_exprs))
         smt_query = smt_query_tpl.Substitute(sub_input)
 
@@ -166,7 +166,7 @@ class SMTVerifier(PLyapunovVerifier):
         if np.isscalar(self._abs_x_lb):
             abs_x_lb_conds = (abs(x) >= Expr(self._abs_x_lb) for x in x_vars)
         else:
-            abs_x_lb = np.asfarray(self._abs_x_lb)
+            abs_x_lb = np.array(self._abs_x_lb)
             assert len(abs_x_lb) == len(x_vars)
             abs_x_lb_conds = (abs(x) >= Expr(lb) for x, lb in zip(x_vars, abs_x_lb))
         exclude_rect = logical_or(*abs_x_lb_conds)
@@ -192,7 +192,7 @@ class SMTVerifier(PLyapunovVerifier):
 def test_substitution():
     from pricely.learner.mock import MockQuadraticLearner
     from pricely.approx.boxes import ConstantApprox
-    X_LIM = np.asfarray([
+    X_LIM = np.array([
         [-1, -1.5, -3],
         [+1, +1.5, +3]
     ])
@@ -208,7 +208,7 @@ def test_substitution():
     verifier = SMTVerifier(x_roi, u_dim=U_DIM)
     verifier.set_lyapunov_candidate(learner.get_candidate())
 
-    region = np.row_stack((np.zeros(X_DIM), X_LIM)).reshape((3, X_DIM))
+    region = np.vstack((np.zeros(X_DIM), X_LIM)).reshape((3, X_DIM))
     approx = ConstantApprox(region, ctrl_mat @ region[0], region[0], 1.0)
     verif_conds = verifier._inst_verif_conds(approx, x_vars)
     print(verif_conds, sep='\n')

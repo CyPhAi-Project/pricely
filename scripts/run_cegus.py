@@ -59,7 +59,7 @@ def viz_region_stats(x_lim, approx, cex_regions):
     ax = fig.add_subplot(211)
 
     diams = [approx[i].domain_diameter for i in range(len(approx))]
-    diams = np.asfarray(diams)
+    diams = np.array(diams)
     sorted_idx = np.flip(np.argsort(diams))
 
     ax.bar(np.arange(len(diams)), diams[sorted_idx], color="b", width=1.0)
@@ -150,7 +150,7 @@ def main(mod, out_dir: Optional[Path]=None,
         else:
             print("Learned candidate is NOT a Lyapunov function for ROI.")
             print(f"Counterexample:\n{result}")
-        validation = (result is None)
+        validation = str(result is None)
 
     print(" Statistics ".center(NCOLS, "="))
     print(f"CEGuS Status: {cegus_status}.\n"
@@ -178,7 +178,7 @@ def main(mod, out_dir: Optional[Path]=None,
     ax = fig_cover.add_subplot()
     ax.set_title(
         f"CEGuS Status: {cegus_status}.\n"
-        f"Is True Lyapunov: {str(validation)}.\n"
+        f"Is True Lyapunov: {validation}.\n"
         f"# epoch: {last_epoch}. "
         f"# total samples: {last_approx.num_samples}. "
         f"Time: {cegus_time_usage:.3f}s")

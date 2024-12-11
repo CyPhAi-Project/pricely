@@ -29,7 +29,7 @@ def gen_init_cover(
         init_part: Optional[Sequence[int]] = None) -> NDArrayFloat:
     """ Generate an initial cover in which each region is a subset of the theoretical upperbound. """
     x_dim = len(abs_roi_ub)
-    abs_lb_arr = np.asfarray(abs_lb)
+    abs_lb_arr = np.array(abs_lb)
     assert np.all(abs_roi_ub > 0.0)
     assert np.all(abs_lb_arr > 0.0)
     assert np.all(abs_roi_ub > 2*abs_lb_arr)
@@ -38,7 +38,7 @@ def gen_init_cover(
     assert len(init_part) == x_dim
 
     init_x_centers, init_x_vecs = gen_stars(
-        np.row_stack((-abs_roi_ub, abs_roi_ub)), init_part)
+        np.vstack((-abs_roi_ub, abs_roi_ub)), init_part)
     all_regions = []
     work_list = [(init_x_centers, init_x_vecs)]
     while work_list:
@@ -80,7 +80,7 @@ def gen_init_cover(
         must_refine = np.logical_not(np.logical_or(may_prove, may_ignore))
         for lb, ub in \
                 zip(x_lbs[must_refine], x_ubs[must_refine]):
-            roi = np.row_stack((lb, ub))
+            roi = np.vstack((lb, ub))
             # TODO Refine regions using Lipschitz constant and sampled values
             hint_part = [2]*x_dim  # Divide into 2^x_dim regions
             work_list.append(gen_stars(roi, hint_part))

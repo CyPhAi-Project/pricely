@@ -105,7 +105,7 @@ class AxisAlignedBoxes(PApproxDynamic):
         self._x_roi = x_roi
         self._u_roi = u_roi
         self._x_regions = x_regions
-        self._u_values = u_values.reshape((len(x_regions), -1))  # ensure to be 2D
+        self._u_values: NDArrayFloat = u_values.reshape((len(x_regions), -1))  # ensure to be 2D
         self._f_bbox =  f_bbox
         self._lip_bbox = lip_bbox
 
@@ -196,8 +196,8 @@ class AxisAlignedBoxes(PApproxDynamic):
             (self._notin_roi_indices, new_notin_roi_indices + len(self._notin_roi_indices)))
 
         self._x_regions = np.concatenate((self._x_regions, new_regions), axis=0)
-        self._u_values = np.row_stack((self._u_values, new_u_values))
-        self._y_values = np.row_stack((self._y_values, new_y_values))
+        self._u_values = np.vstack((self._u_values, new_u_values))
+        self._y_values = np.vstack((self._y_values, new_y_values))
         self._lip_values = np.concatenate((self._lip_values, new_lip_values))
         assert len(self._x_regions) == len(self._u_values) and len(self._x_regions) == len(self._y_values)
 
@@ -233,9 +233,9 @@ class AxisAlignedBoxes(PApproxDynamic):
             new_cexs.append(cex)
             new_lbs.append(cex_lb)
             new_ubs.append(cex_ub)
-        x_values = np.row_stack(new_cexs)
-        x_lbs = np.row_stack(new_lbs)
-        x_ubs = np.row_stack(new_ubs)
+        x_values = np.vstack(new_cexs)
+        x_lbs = np.vstack(new_lbs)
+        x_ubs = np.vstack(new_ubs)
         return np.stack((x_values, x_lbs, x_ubs), axis=1)
 
 

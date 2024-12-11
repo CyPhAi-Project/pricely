@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 from typing import Optional
 
-from phaseportrait import PhasePortrait2D
+from phaseportrait import PhasePortrait2D  # type: ignore
 
 from pricely.candidates import PLyapunovCandidate
 from scripts.utils_plotting_2d import add_level_sets

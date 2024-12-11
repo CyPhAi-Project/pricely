@@ -1,16 +1,18 @@
 import abc
-from dreal import Expression as Expr, Formula, Variable  # type: ignore
 from multiprocessing import Pool, TimeoutError
 import numpy as np
 from numpy.typing import NDArray
 from signal import signal, SIGINT
 from tqdm import tqdm
-from typing import Hashable, Literal, NamedTuple, Optional, Protocol, Sequence, Tuple
+from typing import Hashable, List, Literal, MutableSet, NamedTuple, Optional, Protocol, Sequence, Tuple, TypeVar
 
 NCOLS = 120
 
-NDArrayFloat = NDArray[np.float_]
-NDArrayIndex = NDArray[np.int_]
+NDArrayFloat = NDArray[np.floating]
+NDArrayIndex = NDArray[np.integer]
+Variable = TypeVar('Variable', contravariant=True)
+Expr = TypeVar('Expr', covariant=True)
+Formula = TypeVar('Formula', covariant=True)
 
 
 class ROI(NamedTuple):
@@ -32,17 +34,19 @@ class ROI(NamedTuple):
             & (np.max(np.abs(x_values), axis=1) >= self.abs_x_lb)
 
 
-class PLyapunovCandidate(Protocol):
+class PLyapunovCandidate(Protocol[Variable, Expr]):
     @abc.abstractmethod
     def __copy__(self):
         raise NotImplementedError
 
     @abc.abstractmethod
     def lya_expr(self, x_vars: Sequence[Variable]) -> Expr:
+        """Return the Lyapunov function as an expression"""
         raise NotImplementedError
 
     @abc.abstractmethod
     def lya_values(self, x_values: NDArrayFloat) -> NDArrayFloat:
+        """Compute values of the Lyapunov function for an array of states"""
         raise NotImplementedError
 
     def lya_decay_rate(self) -> float:
@@ -50,6 +54,7 @@ class PLyapunovCandidate(Protocol):
 
     @abc.abstractmethod
     def lie_der_values(self, x_values: NDArrayFloat, y_values: NDArrayFloat) -> NDArrayFloat:
+        """Compute the Lie derivative values of the Lyapunov function for an array of states"""
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -71,7 +76,7 @@ class PLyapunovLearner(Protocol):
         raise NotImplementedError
 
 
-class PLocalApprox(Protocol):
+class PLocalApprox(Protocol[Expr, Formula]):
     @property
     @abc.abstractmethod
     def num_approxes(self) -> int:
@@ -184,9 +189,9 @@ def verify_delta_provability(
     refinement_pbar = tqdm(
         desc=f"Refinement Loop", initial=-1,
         ascii=True, leave=None, position=1, ncols=NCOLS)
-    verified_regions = set()
+    verified_regions: MutableSet[Hashable] = set()
     stop_refine = False
-    cex_regions = []
+    cex_regions: List[Tuple[int, NDArrayFloat]] = []
     while not stop_refine:
         refinement_pbar.update(1)
 
@@ -213,7 +218,7 @@ def verify_delta_provability(
                 except TimeoutError:
                     num_timeouts += 1
                     cex = curr_approx[j].x_witness
-                    box = np.row_stack((cex, cex))
+                    box = np.vstack((cex, cex))
 
                 if box is None:
                     new_verified_regions.add(curr_approx[j].in_domain_repr())
@@ -277,7 +282,7 @@ def cegus_lyapunov(
         iter(range(max_epochs)),
         desc="CEGuS Loop", ascii=True, leave=True, position=0, ncols=NCOLS,
         postfix={"#Samples": curr_approx.num_samples})
-    cex_regions = []
+    cex_regions: Sequence[Tuple[int, NDArrayFloat]] = []
     obj_values = []
 
     for epoch in outer_pbar:
@@ -300,8 +305,9 @@ def cegus_lyapunov(
         res = verify_delta_provability(
             verifier, curr_approx, cand,
             diam_lb, max_num_samples, n_jobs, timeout_per_job)
+        cex_regions = res.cex_regions
         if res.status != "FALSIFIED":
-            return CEGuSResult(res.status, epoch, curr_approx, res.cex_regions)
+            return CEGuSResult(res.status, epoch, curr_approx, cex_regions)
         # else: continue
 
     outer_pbar.close()

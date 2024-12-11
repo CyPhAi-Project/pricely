@@ -1,5 +1,4 @@
 import cvxpy as cp
-from dreal import Expression as Expr, Variable  # type: ignore
 import numpy as np
 from typing import List, Literal, Sequence, Tuple
 

@@ -25,7 +25,7 @@ def add_level_sets(
     if np.isfinite(level_ub):
         levels=[level_ub]
     else:
-        sel_values = np.row_stack([
+        sel_values = np.vstack([
             np.column_stack((x_arr, np.full_like(x_arr, y_lim[0]))),
             np.column_stack((np.full_like(y_arr, x_lim[0]), y_arr))])
         lya_values = lya_func(sel_values)

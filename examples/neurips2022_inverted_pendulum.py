@@ -75,15 +75,15 @@ def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
 
 
 def nnet_lya(x_values: np.ndarray) -> np.ndarray:
-    W1_T = np.asfarray([
+    W1_T = np.array([
         [+0.03331, +0.03467, +2.12564, -0.39925, +0.12885, +0.95375],
         [-0.03113, -0.01892, +0.02354, -0.10678, -0.32245, +0.01298]
     ])
-    b1 = np.asfarray([-0.48061, 0.88048, 0.86448, -0.87253, 0.81866, -0.26619])
-    W2 = np.asfarray([
+    b1 = np.array([-0.48061, 0.88048, 0.86448, -0.87253, 0.81866, -0.26619])
+    W2 = np.array([
         [-0.33862, 0.65177, -0.52607, 0.23062, -0.04802, 0.66825]
     ])
-    b2 = np.asfarray([0.22032])
+    b2 = np.array([0.22032])
     linear1 = x_values @ W1_T + b1
     hidden1 = np.tanh(linear1)
     linear2 = hidden1 @ W2.T + b2
@@ -91,6 +91,6 @@ def nnet_lya(x_values: np.ndarray) -> np.ndarray:
 
 
 def quad_lya(X: np.ndarray) -> np.ndarray:
-    P = np.asfarray([[9601880.839207353, 2108259.5872321003],
+    P = np.array([[9601880.839207353, 2108259.5872321003],
                      [2108259.5872321003, 482706.94878913707]])
     return 0.5*np.sum(np.multiply(X @ P, X), axis=1)

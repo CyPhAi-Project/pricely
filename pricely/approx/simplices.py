@@ -39,13 +39,13 @@ class BarycentricMixin:
         super().__init__(*args, **kwargs)
         x_dim = trans_barycentric.shape[1]
         assert trans_barycentric.shape[0] == x_dim + 1
-        assert np.alltrue(np.isfinite(trans_barycentric))
+        assert np.all(np.isfinite(trans_barycentric))
 
         self._t_mat = trans_barycentric[:x_dim, :x_dim]
         self._r_vec = trans_barycentric[x_dim, :x_dim]
 
     def _get_barycentric_exprs(self, x_vars: Sequence[Variable]) -> Sequence[Expr]:
-        ret = (self._t_mat @ (x_vars - self._r_vec)).tolist()
+        ret = list((self._t_mat @ (x_vars - self._r_vec)))
         ret.append(1.0 - sum(ret))
         return ret
 
@@ -81,7 +81,7 @@ class LinearInterpolaton(BarycentricMixin, DatasetApproxBase):
 
     def error_bound_expr(self, x_vars: Sequence[Variable], u_vars: Sequence[Variable], k: int) -> Expr:
         barycentric_exprs = self._get_barycentric_exprs(x_vars)
-        norm_exprs = [Sqrt(sum((x_vars - xv)**2) + sum((u_vars - uv)**2))
+        norm_exprs = [Sqrt(sum((x_vars - xv)**2) + sum((u_vars - uv)**2))  # type: ignore
                       for xv, uv in zip(self._x_values, self._u_values)]
         return self._lip * sum(b*n for b, n in zip(barycentric_exprs, norm_exprs))
 
@@ -248,10 +248,10 @@ class SimplicialComplex(PApproxDynamic):
 
     def add(self, cex_boxes: Sequence[Tuple[int, NDArrayFloat]], cand: PLyapunovCandidate) \
             -> Tuple[NDArrayFloat, NDArrayFloat, NDArrayFloat]:
-        cex_regions = np.asfarray([box for j, box in cex_boxes])
+        cex_regions = np.array([box for j, box in cex_boxes])
         assert cex_regions.shape[1] == 2 and cex_regions.shape[2] == self.x_dim
         new_x_values = cex_regions.mean(axis=1)
-        assert np.alltrue(np.isfinite(new_x_values))
+        assert np.all(np.isfinite(new_x_values))
 
         # NOTE This assumes SciPy Delaunay class maintains the order of added points.
         try:
@@ -267,8 +267,8 @@ class SimplicialComplex(PApproxDynamic):
 
         new_u_values = cand.ctrl_values(new_x_values)
         new_y_values = self._f_bbox(new_x_values, new_u_values)
-        self._u_values = np.row_stack((self._u_values, new_u_values))
-        self._y_values = np.row_stack((self._y_values, new_y_values))
+        self._u_values = np.vstack((self._u_values, new_u_values))
+        self._y_values = np.vstack((self._y_values, new_y_values))
 
         # NOTE Lipschitz constants follow the number of regions instead of samples.
         self._lip_values = self._calc_lipschitz()

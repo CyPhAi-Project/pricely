@@ -79,7 +79,7 @@ def nnet_lya(X: np.ndarray) -> np.ndarray:
 
 
 def quad_lya(X: np.ndarray) -> np.ndarray:
-    P = np.asfarray([
+    P = np.array([
         [96993655.36465222,  20809870.734031927],
         [20809870.734031927, 16434242.326128198]])
     return 0.5*np.sum(np.multiply(X @ P, X), axis=1)
