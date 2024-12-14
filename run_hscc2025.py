@@ -1,3 +1,8 @@
+import os
+
+# Disable all tqdm progress bars
+os.environ["TQDM_DISABLE"] = "1"
+
 from examples import \
     fossil_nonpoly0, fossil_nonpoly1, fossil_nonpoly2, fossil_nonpoly3, \
     fossil_poly1, fossil_poly2, fossil_poly3, fossil_poly4, \
@@ -5,8 +10,6 @@ from examples import \
     path_following_stanley
 
 from scripts import run_cegus
-
-NCOLS= 120
 
 MAX_SAMPLES = 10**6
 
@@ -21,6 +24,7 @@ polys_cases = [
 ]
 
 for mod in trans_cases:
-    print(f"\n Benchmark: {mod.__name__} ".center(NCOLS, "#"))
+    print("\n")
+    print(f" Benchmark: {mod.__name__} ".center(run_cegus.NCOLS, "#"))
     # Synthesize a Lyapunov function
-    cand = run_cegus.main(mod, out_dir=None, max_num_samples=MAX_SAMPLES)
+    cand = run_cegus.execute(mod, out_dir=None, max_num_samples=MAX_SAMPLES)

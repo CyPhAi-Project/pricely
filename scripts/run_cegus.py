@@ -1,4 +1,4 @@
-from dreal import Config, Variable  # type: ignore
+from dreal import Config  # type: ignore
 import numpy as np
 from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
@@ -9,12 +9,10 @@ from scripts.utils_plotting_2d import CatchTime, add_level_sets, add_valid_regio
 from pricely.approx.boxes import AxisAlignedBoxes
 from pricely.approx.simplices import SimplicialComplex
 from pricely.candidates import QuadraticLyapunov
-from pricely.cegus_lyapunov import ROI, cegus_lyapunov
+from pricely.cegus_lyapunov import NCOLS, ROI, cegus_lyapunov
 from pricely.learner.cvxpy import QuadraticLearner
-from pricely.utils import cartesian_prod, check_lyapunov_roi, gen_equispace_regions
-from pricely.verifier.smt_dreal import SMTVerifier, pretty_sub
-
-NCOLS = 120
+from pricely.utils import cartesian_prod, gen_equispace_regions
+from pricely.verifier.smt_dreal import SMTVerifier
 
 
 def viz_regions_2d(ax, mod, last_approx, cex_regions):
@@ -70,7 +68,7 @@ def viz_region_stats(x_lim, approx, cex_regions):
     return fig
 
 
-def main(mod, out_dir: Optional[Path]=None,
+def execute(mod, out_dir: Optional[Path]=None,
         max_epochs: int=40, max_num_samples: int=5*10**5,
         n_jobs: int=16) -> Optional[QuadraticLyapunov]:
     x_roi = ROI(
@@ -120,7 +118,7 @@ def main(mod, out_dir: Optional[Path]=None,
                 max_epochs=max_epochs, max_iter_learn=1,
                 max_num_samples=max_num_samples,
                 n_jobs=n_jobs)
-        print(f"\nCEGuS Status: {status}")
+        print(f"CEGuS Status: {status}")
     cand: Optional[QuadraticLyapunov] = None
     if status != "NO_CANDIDATE":
         cand = learner.get_candidate()
@@ -128,33 +126,8 @@ def main(mod, out_dir: Optional[Path]=None,
     cegus_status = status
     cegus_time_usage = timer.elapsed
 
-
-    print(" Validate learned Lyapunov candidate ".center(NCOLS, "="))
-    validation = "N/A"
-    if cand is None:
-        print("Skipped due to no feasible candidate.")
-    else:
-        assert cand is not None
-        x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(mod.X_DIM)]
-        dxdt_exprs = mod.f_expr(x_vars)
-        lya_expr = cand.lya_expr(x_vars)
-        lya_decay_rate = cand.lya_decay_rate()
-        print(f"Check Lyapunov potential with decay rate: {lya_decay_rate}")
-        result = check_lyapunov_roi(
-            x_vars, dxdt_exprs, lya_expr,
-            x_roi,
-            lya_decay_rate=lya_decay_rate,
-            config=config)
-        if result is None:
-            print("Learned candidate is a valid Lyapunov function for ROI.")
-        else:
-            print("Learned candidate is NOT a Lyapunov function for ROI.")
-            print(f"Counterexample:\n{result}")
-        validation = str(result is None)
-
     print(" Statistics ".center(NCOLS, "="))
     print(f"CEGuS Status: {cegus_status}.\n"
-        f"Is True Lyapunov: {validation}.\n"
         f"# epoch: {last_epoch}. "
         f"# total samples: {last_approx.num_samples}. "
         f"# total regions: {len(last_approx)}. "
@@ -178,7 +151,6 @@ def main(mod, out_dir: Optional[Path]=None,
     ax = fig_cover.add_subplot()
     ax.set_title(
         f"CEGuS Status: {cegus_status}.\n"
-        f"Is True Lyapunov: {validation}.\n"
         f"# epoch: {last_epoch}. "
         f"# total samples: {last_approx.num_samples}. "
         f"Time: {cegus_time_usage:.3f}s")

@@ -9,7 +9,7 @@ from pricely.candidates import PLyapunovCandidate
 from scripts.utils_plotting_2d import add_level_sets
 
 
-def main(mod, cand: Optional[PLyapunovCandidate], out_dir: Path):
+def execute(mod, cand: Optional[PLyapunovCandidate], out_dir: Path):
     def f_2d(x0, x1):
         x = np.array([[x0, x1]])
         dx = mod.f_bbox(x).squeeze()

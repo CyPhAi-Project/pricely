@@ -10,7 +10,7 @@ dependencies:
   - numpy >=2.0
   - scipy
   - scipy-stubs
-  - tqdm
+  - tqdm >=4.66.0
   - types-tqdm
   - cvxopt
   - cvxpy

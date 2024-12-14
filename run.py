@@ -1,19 +1,22 @@
 from datetime import date
 from pathlib import Path
 
-import examples.ex_1d as mod
+import examples.neurips2022_van_der_pol as mod
 
-from scripts import run_cegus, plot_phaseportrait_2d, validate_lip_bbox
+from scripts import run_cegus, plot_phaseportrait_2d, validate_lip_bbox, validate_lya_cand
 
 OUT_DIR = Path(f"out/{date.today()}/{mod.__name__.split('.')[-1]}")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Validate the provided Lipschitz constant(s) by evenly-spaced sampling
 MAX_SAMPLES = 10**6
-validate_lip_bbox.main(mod, MAX_SAMPLES)
+validate_lip_bbox.execute(mod, MAX_SAMPLES)
 
 # Synthesize a Lyapunov function
-cand = run_cegus.main(mod, out_dir=OUT_DIR, max_num_samples=MAX_SAMPLES)
+cand = run_cegus.execute(mod, out_dir=OUT_DIR, max_num_samples=MAX_SAMPLES)
+
+if cand is not None:
+    validate_lya_cand.execute(mod, cand)
 
 if mod.X_DIM == 2:
-    plot_phaseportrait_2d.main(mod, cand, OUT_DIR)
+    plot_phaseportrait_2d.execute(mod, cand, OUT_DIR)
