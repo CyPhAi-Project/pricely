@@ -18,6 +18,19 @@ def _gen_neg_lya_cond(
     return logical_or(lya_expr <= 0.0, lie_der_lya + lya_decay_rate*lya_expr >= 0.0)
 
 
+def pretty_sup(i: int) -> str:
+    """ Convert integers to superscripted numbers """
+    assert i >= 0
+    LOOKUP_SUP = [
+        0x2070, 0x00B9, 0x00B2, 0x00B3, 0x2074,
+        0x2075, 0x2076, 0x2077, 0x2078, 0x2079]
+    rev_str = [chr(LOOKUP_SUP[i % 10])]
+    while i >= 10:
+        i = i // 10
+        rev_str.append(chr(LOOKUP_SUP[i % 10]))
+    return "".join(reversed(rev_str))
+
+
 def pretty_sub(i: int) -> str:
     """ Convert integers to subscripted numbers """
     assert i >= 0

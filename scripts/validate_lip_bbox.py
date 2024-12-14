@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Sequence
 
-from pricely.utils import cartesian_prod, gen_equispace_regions
+from pricely.utils import cartesian_prod, gen_equispace_regions, pretty_sup
 from scripts.utils_plotting_2d import CatchTime
 
 NCOLS = 120
@@ -68,8 +68,8 @@ def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
     assert np.all(lip_lbs <= lip_values)
 
 
-def main(mod, max_num_samples: int, n_jobs: int = 16):
-    print(" Validate local Lipschitz constants ".center(NCOLS, "="))
+def execute(mod, max_num_samples: int = 10**6, n_jobs: int = 16):
+    num_cuts = int(np.floor(2**(np.log2(max_num_samples)/mod.X_DIM))) - 1
+    print(f" Validate local Lipschitz bounds with {num_cuts+1}{pretty_sup(mod.X_DIM)} samples ".center(NCOLS, "="))
     with CatchTime():
-        num_cuts = int(np.floor(2**(np.log2(max_num_samples)/mod.X_DIM))) - 1
         validate_lip_bbox(mod, [num_cuts]*mod.X_DIM)
