@@ -69,7 +69,7 @@ def validate_lip_bbox(mod, parts: Sequence[int], n_jobs: int = 16):
 
 
 def execute(mod, max_num_samples: int = 10**6, n_jobs: int = 16):
-    num_cuts = int(np.floor(2**(np.log2(max_num_samples)/mod.X_DIM))) - 1
+    num_cuts = int(np.floor(10**(np.log10(max_num_samples)/mod.X_DIM))) - 1
     print(f" Validate local Lipschitz bounds with {num_cuts+1}{pretty_sup(mod.X_DIM)} samples ".center(NCOLS, "="))
     with CatchTime():
         validate_lip_bbox(mod, [num_cuts]*mod.X_DIM)
