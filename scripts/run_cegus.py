@@ -69,7 +69,9 @@ def viz_region_stats(x_lim, approx, cex_regions):
 
 
 def execute(mod, out_dir: Optional[Path]=None,
-        max_epochs: int=40, max_num_samples: int=5*10**5,
+        delta: float =1e-4,
+        max_epochs: int=10,
+        max_num_samples: int=5*10**5,
         n_jobs: int=16) -> Optional[QuadraticLyapunov]:
     x_roi = ROI(
         x_lim=mod.X_LIM,
@@ -114,7 +116,7 @@ def execute(mod, out_dir: Optional[Path]=None,
         status, last_epoch, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
-                delta=1e-4,
+                delta=delta,
                 max_epochs=max_epochs, max_iter_learn=1,
                 max_num_samples=max_num_samples,
                 n_jobs=n_jobs)

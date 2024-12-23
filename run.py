@@ -8,12 +8,14 @@ from scripts import run_cegus, plot_phaseportrait_2d, validate_lip_bbox, validat
 OUT_DIR = Path(f"out/{date.today()}/{mod.__name__.split('.')[-1]}")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Validate the provided Lipschitz constant(s) by evenly-spaced sampling
+DELTA = 1e-4
 MAX_SAMPLES = 10**6
+
+# Validate the provided Lipschitz constant(s) by evenly-spaced sampling
 validate_lip_bbox.execute(mod, MAX_SAMPLES)
 
 # Synthesize a Lyapunov function
-cand = run_cegus.execute(mod, out_dir=OUT_DIR, max_num_samples=MAX_SAMPLES)
+cand = run_cegus.execute(mod, out_dir=OUT_DIR, delta=DELTA, max_num_samples=MAX_SAMPLES)
 
 if cand is not None:
     validate_lya_cand.execute(mod, cand)

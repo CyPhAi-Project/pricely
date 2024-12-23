@@ -265,7 +265,7 @@ def cegus_lyapunov(
         learner: PLyapunovLearner,
         verifier: PLyapunovVerifier,
         init_approx: PApproxDynamic,
-        delta: float = 1e-6,
+        delta: float = 1e-4,
         max_epochs: int = 10,
         max_iter_learn: int = 10,
         max_num_samples: int = 5*10**5,
