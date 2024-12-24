@@ -190,9 +190,9 @@ def verify_delta_provability(
         desc=f"Refinement Loop", initial=-1,
         ascii=True, leave=None, position=1, ncols=NCOLS)
     verified_regions: MutableSet[Hashable] = set()
-    stop_refine = False
+    keep_refine = True
     cex_regions: List[Tuple[int, NDArrayFloat]] = []
-    while not stop_refine:
+    while keep_refine:
         refinement_pbar.update(1)
 
         new_verified_regions = set()
@@ -223,7 +223,7 @@ def verify_delta_provability(
                 if box is None:
                     new_verified_regions.add(curr_approx[j].in_domain_repr())
                 else:
-                    stop_refine = stop_refine or (curr_approx[j].domain_diameter <= diam_lb)
+                    keep_refine = keep_refine and (curr_approx[j].domain_diameter >= diam_lb)
                     cex_regions.append((j, box))
         verified_regions.clear()
         verified_regions = new_verified_regions
@@ -252,7 +252,9 @@ def verify_delta_provability(
             return DeltaProverResult("FALSIFIED", cex_regions)
         # End of the while-loop
 
-    # stop_refine == True
+    # keep_refine == False
+    # This means all found counterexamples are spurious,
+    # and a region with a spurious counterexample is too small.
     refinement_pbar.set_postfix({
         "#Valid Regions": "?",
         "#Total Regions": len(curr_approx),
