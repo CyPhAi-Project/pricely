@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib.patches import Circle, Rectangle
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import Optional
+from typing import Optional, NamedTuple
 
 from scripts.utils_plotting_2d import CatchTime, add_level_sets, add_valid_regions
 from pricely.approx.boxes import AxisAlignedBoxes
@@ -13,6 +13,16 @@ from pricely.cegus_lyapunov import NCOLS, ROI, cegus_lyapunov
 from pricely.learner.cvxpy import QuadraticLearner
 from pricely.utils import cartesian_prod, gen_equispace_regions
 from pricely.verifier.smt_dreal import SMTVerifier
+
+
+class Stats(NamedTuple):
+    cegus_status: str
+    cegus_time_usage: float
+    last_epoch: int
+    last_candidate: Optional[QuadraticLyapunov]
+    num_samples_learn: int
+    num_samples: int
+    num_regions: int
 
 
 def viz_regions_2d(ax, mod, last_approx, cex_regions):
@@ -72,7 +82,7 @@ def execute(mod, out_dir: Optional[Path]=None,
         delta: float =1e-4,
         max_epochs: int=10,
         max_num_samples: int=5*10**5,
-        n_jobs: int=16) -> Optional[QuadraticLyapunov]:
+        n_jobs: int=16) -> Stats:
     x_roi = ROI(
         x_lim=mod.X_LIM,
         abs_x_lb=mod.ABS_X_LB,
@@ -113,7 +123,7 @@ def execute(mod, out_dir: Optional[Path]=None,
     with timer:
         learner = QuadraticLearner(mod.X_DIM, v_max=1e8)
         verifier = SMTVerifier(x_roi=x_roi, config=config)
-        status, last_epoch, last_approx, cex_regions = \
+        status, last_epoch, last_num_samples_learn, last_approx, cex_regions = \
             cegus_lyapunov(
                 learner, verifier, approx,
                 delta=delta,
@@ -128,17 +138,16 @@ def execute(mod, out_dir: Optional[Path]=None,
     cegus_status = status
     cegus_time_usage = timer.elapsed
 
-    print(" Statistics ".center(NCOLS, "="))
-    print(f"CEGuS Status: {cegus_status}.\n"
-        f"# epoch: {last_epoch}. "
-        f"# total samples: {last_approx.num_samples}. "
-        f"# total regions: {len(last_approx)}. "
-        f"Time: {cegus_time_usage:.3f}s")
+    stats = Stats(
+        cegus_status,
+        cegus_time_usage,
+        last_epoch, cand, last_num_samples_learn,
+        approx.num_samples, len(approx))
 
-    if out_dir is None or len(last_approx) >= 2*10**4:  # Skip plotting
-        return cand
+    if out_dir is None or len(approx) >= 2*10**4:  # Skip plotting
+        return stats
 
-    fig_err = viz_region_stats(mod.X_LIM, last_approx, cex_regions)
+    fig_err = viz_region_stats(mod.X_LIM, approx, cex_regions)
     f_name = f"err-cover-{'x'.join(str(n) for n in init_part)}.png"
     f_path = out_dir / f_name
     fig_err.savefig(f_path)  # type: ignore
@@ -146,7 +155,7 @@ def execute(mod, out_dir: Optional[Path]=None,
     print(f'The plot is saved to "{f_path}".')
 
     if mod.X_DIM != 2:  # Support plotting 2D systems only
-        return cand
+        return stats
 
     fig_cover = plt.figure()
     fig_cover.suptitle(f"Cover of ROI for {mod.__name__}")
@@ -154,9 +163,9 @@ def execute(mod, out_dir: Optional[Path]=None,
     ax.set_title(
         f"CEGuS Status: {cegus_status}.\n"
         f"# epoch: {last_epoch}. "
-        f"# total samples: {last_approx.num_samples}. "
+        f"# total samples: {approx.num_samples}. "
         f"Time: {cegus_time_usage:.3f}s")
-    viz_regions_2d(ax, mod, last_approx, cex_regions)
+    viz_regions_2d(ax, mod, approx, cex_regions)
     if cand:
         viz_basin_2d(ax, mod, learner.get_candidate())
     ax.set_aspect("equal")
@@ -167,4 +176,4 @@ def execute(mod, out_dir: Optional[Path]=None,
     plt.clf()
     print(f'The plot is saved to "{f_path}".')
 
-    return cand
+    return stats

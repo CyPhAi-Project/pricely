@@ -15,10 +15,18 @@ MAX_SAMPLES = 10**6
 validate_lip_bbox.execute(mod, MAX_SAMPLES)
 
 # Synthesize a Lyapunov function
-cand = run_cegus.execute(mod, out_dir=OUT_DIR, delta=DELTA, max_num_samples=MAX_SAMPLES)
+stats = run_cegus.execute(mod, out_dir=OUT_DIR, delta=DELTA, max_num_samples=MAX_SAMPLES)
+cand = stats.last_candidate
 
 if cand is not None:
     validate_lya_cand.execute(mod, cand)
 
 if mod.X_DIM == 2:
     plot_phaseportrait_2d.execute(mod, cand, OUT_DIR)
+
+print(" Final Statistics ".center(run_cegus.NCOLS, "#"))
+print(f"CEGuS Status: {stats.cegus_status}. "
+    f"#iterations: {stats.last_epoch + 1}. "
+    f"#samples: {stats.num_samples}. "
+    f"#regions: {stats.num_regions}. "
+    f"Time: {stats.cegus_time_usage:.3f}s")

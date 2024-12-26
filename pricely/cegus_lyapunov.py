@@ -174,6 +174,7 @@ class DeltaProverResult(NamedTuple):
 class CEGuSResult(NamedTuple):
     status: Literal["FOUND", "NO_CANDIDATE", "EPOCH_LIMIT", "SAMPLE_LIMIT", "PRECISION_LIMIT"]
     epoch: int
+    num_samples_learn: int
     approx: PApproxDynamic
     cex_regions: Sequence[Tuple[int, NDArrayFloat]]
 
@@ -282,23 +283,24 @@ def cegus_lyapunov(
 
     outer_pbar = tqdm(
         iter(range(max_epochs)),
-        desc="CEGuS Loop", ascii=True, leave=True, position=0, ncols=NCOLS,
-        postfix={"#Samples": curr_approx.num_samples})
+        desc="CEGuS Loop", ascii=True, leave=True, position=0, ncols=NCOLS)
     cex_regions: Sequence[Tuple[int, NDArrayFloat]] = []
     obj_values = []
+    num_samples_learn = 0
 
     for epoch in outer_pbar:
         ## Prepare dataset for learning
         x_values, u_values, y_values = curr_approx.samples_in_roi
         # NOTE x_values is filtered
-        outer_pbar.set_postfix({"#Samples for learner": len(x_values)})
+        num_samples_learn = len(x_values)
+        outer_pbar.set_postfix({"#Samples for learner": num_samples_learn})
         # Learn a new candidate
         objs = learner.fit_loop(
             x_values, u_values, y_values,
             max_epochs=max_iter_learn, copy=False)
         if not objs:
             tqdm.write("No Lyapunov candidate in learner's hypothesis space.")
-            return CEGuSResult("NO_CANDIDATE", epoch, curr_approx, cex_regions)
+            return CEGuSResult("NO_CANDIDATE", epoch, num_samples_learn, curr_approx, cex_regions)
 
         obj_values.extend(objs)
         cand = learner.get_candidate()
@@ -309,10 +311,11 @@ def cegus_lyapunov(
             diam_lb, max_num_samples, n_jobs, timeout_per_job)
         cex_regions = res.cex_regions
         if res.status != "FALSIFIED":
-            return CEGuSResult(res.status, epoch, curr_approx, cex_regions)
+            outer_pbar.close()
+            return CEGuSResult(res.status, epoch, num_samples_learn, curr_approx, cex_regions)
         # else: continue
 
     outer_pbar.close()
 
     tqdm.write(f"Cannot find a Lyapunov function in {max_epochs} iterations.")
-    return CEGuSResult("EPOCH_LIMIT", max_epochs, curr_approx, cex_regions)
+    return CEGuSResult("EPOCH_LIMIT", max_epochs, num_samples_learn, curr_approx, cex_regions)
