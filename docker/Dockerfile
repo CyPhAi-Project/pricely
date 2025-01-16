@@ -45,6 +45,6 @@ WORKDIR /home/app
 ENV PRICELY_REPO_URL=https://git.iimc.kyoto-u.ac.jp/chiao709hsieh/pricely.git#hscc2025
 ADD --chown=app:app ${PRICELY_REPO_URL} ./pricely-repo
 RUN python3 -m pip install --no-cache-dir --no-warn-script-location --upgrade pip && \
-    python3 -m pip install --no-cache-dir --no-warn-script-location -r ./pricely-repo/requirements.txt
+    python3 -m pip install --no-cache-dir --no-warn-script-location -r ./pricely-repo/docker/requirements.txt
 
 CMD ["bash"]
