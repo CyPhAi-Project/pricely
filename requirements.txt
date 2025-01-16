@@ -7,7 +7,6 @@ tqdm >=4.66.0
 types-tqdm
 cvxopt
 cvxpy
-ecos
 pybind11
 qdldl
 scs
