@@ -1,0 +1,16 @@
+matplotlib
+mypy
+numpy >=2.0
+scipy
+scipy-stubs
+tqdm >=4.66.0
+types-tqdm
+cvxopt
+cvxpy
+ecos
+pybind11
+qdldl
+scs
+dreal
+phaseportrait
+-e file:///home/app/pricely-repo
