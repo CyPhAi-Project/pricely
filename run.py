@@ -27,6 +27,7 @@ if mod.X_DIM == 2:
 print(" Final Statistics ".center(run_cegus.NCOLS, "#"))
 print(f"CEGuS Status: {stats.cegus_status}. "
     f"#iterations: {stats.last_epoch + 1}. "
+    f"#samples for learner: {stats.num_samples_learn}. "
     f"#samples: {stats.num_samples}. "
     f"#regions: {stats.num_regions}. "
     f"Time: {stats.cegus_time_usage:.3f}s")
