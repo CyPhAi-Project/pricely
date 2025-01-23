@@ -35,8 +35,8 @@ for mod in polys_cases:
 
 with open('out/hscc2025_polys.csv', mode='w') as f:
     writer = csv.writer(f)
-    writer.writerow(["Name", "r", "CEGuS Status", "Time", "k", "#samples", "#regions"])
+    writer.writerow(["Name", "r", "CEGuS Status", "Time", "k", "|S_L|", "|S|", "|C|"])
     for name, r, stats in res_list:
         writer.writerow([
             name, r, stats.cegus_status, stats.cegus_time_usage,
-            stats.last_epoch + 1, stats.num_samples, stats.num_regions])
+            stats.last_epoch + 1, stats.num_samples_learn, stats.num_samples, stats.num_regions])
