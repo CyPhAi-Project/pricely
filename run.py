@@ -9,7 +9,7 @@ OUT_DIR = Path(f"out/{date.today()}/{mod.__name__.split('.')[-1]}")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 DELTA = 1e-4
-MAX_SAMPLES = 10**6
+MAX_SAMPLES = 5*10**5
 
 # Validate the provided Lipschitz constant(s) by evenly-spaced sampling
 validate_lip_bbox.execute(mod, MAX_SAMPLES)

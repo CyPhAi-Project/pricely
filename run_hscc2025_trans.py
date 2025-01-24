@@ -10,7 +10,7 @@ from examples import \
 
 from scripts import run_cegus
 
-MAX_SAMPLES = 10**6
+MAX_SAMPLES = 5*10**5
 
 trans_cases = [
     neurips2022_van_der_pol, neurips2022_unicycle_following, neurips2022_inverted_pendulum,

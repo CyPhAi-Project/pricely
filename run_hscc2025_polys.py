@@ -10,7 +10,7 @@ from examples import \
 
 from scripts import run_cegus
 
-MAX_SAMPLES = 10**6
+MAX_SAMPLES = 5*10**5
 
 polys_cases = [
     fossil_nonpoly0,

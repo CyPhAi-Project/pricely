@@ -1,7 +1,7 @@
 matplotlib
 mypy
 numpy >=2.0
-scipy
+scipy ==1.14.1
 scipy-stubs
 tqdm >=4.66.0
 types-tqdm

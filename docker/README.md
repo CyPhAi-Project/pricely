@@ -1,4 +1,4 @@
-# Prepare the docker image for repeatability
+# Prepare the docker image and container for repeatability
 
 ## Build the docker image
 ```shell
@@ -20,5 +20,5 @@ docker load hscc2025_latest.tar.gz
 ```shell
 docker run --rm --name hscc2025 -it hscc2025:latest
 ```
-This will create a container and start a bash shell for running commands for experiments.
+This will create a container from the image and start a bash shell for running commands for experiments.
 The container will be automatically removed after logging out.
