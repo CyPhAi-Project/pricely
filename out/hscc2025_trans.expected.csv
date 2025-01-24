@@ -1,0 +1,5 @@
+Name,CEGuS Status,Time,k,|S_L|,|S|,|C|
+neurips2022_van_der_pol,FOUND,1.6530544627457857,1,16,488,954
+neurips2022_unicycle_following,FOUND,24.671762611716986,1,16,9825,19628
+neurips2022_inverted_pendulum,PRECISION_LIMIT,56.39136609248817,1,16,78182,156342
+path_following_stanley,FOUND,7.623060550540686,1,36,829,1621
