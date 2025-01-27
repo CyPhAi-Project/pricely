@@ -63,18 +63,24 @@ def viz_basin_2d(ax, mod, cand: QuadraticLyapunov):
 def viz_region_stats(x_lim, approx, cex_regions):
     print(" Plotting diameters of all regions in descending order".center(NCOLS, "="))
     fig = plt.figure()
-    fig.suptitle("Diameters of regions")
-    ax = fig.add_subplot(211)
+    fig.suptitle("Diameters of regions in descending order")
+    # ax = fig.add_subplot(211)
+    ax = fig.gca()
 
     diams = [approx[i].domain_diameter for i in range(len(approx))]
     diams = np.array(diams)
     sorted_idx = np.flip(np.argsort(diams))
 
+    ax.set_title("Diameter [Min, Max]: "
+        f"[{diams[sorted_idx[-1]]:.3f},"
+        f"{diams[sorted_idx[0]]:.3f}]")
+
     ax.bar(np.arange(len(diams)), diams[sorted_idx], color="b", width=1.0)
 
-    ax1 = fig.add_subplot(212)
-    ax1.scatter(diams[sorted_idx], approx._lip_values[sorted_idx], s=0.2)
-    fig.tight_layout()
+    # Plot the correlation between the diameter of regions and Lipschitz bounds
+    # ax1 = fig.add_subplot(212)
+    # ax1.scatter(diams[sorted_idx], approx._lip_values[sorted_idx], s=0.2)
+    # fig.tight_layout()
     return fig
 
 
@@ -148,7 +154,8 @@ def execute(mod, out_dir: Optional[Path]=None,
         return stats
 
     fig_err = viz_region_stats(mod.X_LIM, approx, cex_regions)
-    f_name = f"err-cover-{'x'.join(str(n) for n in init_part)}.png"
+    # f_name = f"diameters-{'x'.join(str(n) for n in init_part)}.png"
+    f_name = f"diameters.png"
     f_path = out_dir / f_name
     fig_err.savefig(f_path)  # type: ignore
     plt.clf()
@@ -170,7 +177,8 @@ def execute(mod, out_dir: Optional[Path]=None,
         viz_basin_2d(ax, mod, learner.get_candidate())
     ax.set_aspect("equal")
     fig_cover.tight_layout()
-    f_name = f"cegus-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
+    # f_name = f"cegus-valid_regions-{'x'.join(str(n) for n in init_part)}.png"
+    f_name = f"cegus-valid_regions.png"
     f_path = out_dir / f_name
     plt.savefig(f_path)
     plt.clf()

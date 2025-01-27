@@ -13,7 +13,7 @@ docker save hscc2025:latest | gzip > hscc2025_latest.tar.gz
 
 ## Load the docker image on another host machine
 ```shell
-docker load hscc2025_latest.tar.gz
+docker load --input hscc2025_latest.tar.gz
 ```
 
 ## Create a temporary docker container for reproducing experiment results
