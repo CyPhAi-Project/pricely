@@ -55,7 +55,7 @@ a CSV file named `hscc2025_polys.csv` is generated under the `out/` folder.
 To run the experiment with the radius set to `r=5` of `r=10`,
 modify the constant `X_NORM_UB` in each of the benchmark file `examples/*.py`.
 
-**Note:** Due to the excessive execution time for the `poly_1` benchmark,
+**Note:** Due to the excessive execution time (>4 hrs) for the `poly_1` benchmark,
 we commented it out in `run_hscc2025_polys.py`.
 You can uncomment it to run the experiment.
 
@@ -74,8 +74,9 @@ python3 run.py
 After the Python script finishes successfully,
 you should see the following three PNG images under the `out/<yyyy-mm-dd>/neurips2022_van_der_pol` folder:
 
-+ `phase_portrait.png` plots the phase portrait and the basic of attraction in Fig.3 (*Right*).
-+ `cegus-valid_regions-5x5.png` plots the final triangulation in Fig.3 (*Right*).
-+ `diameters-5x5.png` plots 
++ `phase_portrait.png` plots the phase portrait and the basic of attraction as shown in Fig.3 (*Right*).
++ `cegus-valid_regions.png` plots the final triangulation as shown in Fig.3 (*Right*).
++ `diameters.png` plots the diameters of simplices in the triangulation in descending order.
+
 
 **NOTE:** Plotting the triangulation and phase portrait is supported for 2D dynamical systems.
