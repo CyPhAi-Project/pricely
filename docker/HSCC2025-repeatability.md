@@ -1,4 +1,4 @@
-# Instructions for HSCC 2025 Repeatability Package
+# Instructions for HSCC 2025 Repeatability Evaluation
 
 Here we provide the instructions to reproduce the experiment result for our paper,
 "Certifying Lyapunov Stability of Black-Box Nonlinear Systems via Counterexample Guided Synthesis",
@@ -13,11 +13,12 @@ We focus on reproducing the following tables and figures in our submission:
 ## Obtain Docker Image and Create Docker Container
 
 We provide a compressed file `hscc2025_latest.tar.gz` on [Google Drive] for loading our docker image.
-Once the file is downloaded, load the image using the following command:
 
 [Google Drive]: https://drive.google.com/file/d/1EfmdD7c0P9TCkyxo3XpP81Nf9EDlYxSA/view?usp=sharing
 
+<https://drive.google.com/file/d/1EfmdD7c0P9TCkyxo3XpP81Nf9EDlYxSA/view?usp=sharing>
 
+Once the file is downloaded, load the image using the following command:
 ```shell
 docker load --input hscc2025_latest.tar.gz
 ```
@@ -36,9 +37,7 @@ docker run --rm -v /tmp/out:/tmp/out --platform=linux/amd64 -it hscc2025:latest
 **Note:** Using the above command, the container will be removed automatically once your logout, and any change inside the container is discarded.
 
 
-## Reproduce Experiment Result in Table 2 and 3 inside Docker Container
-
-### Reproduce Table 2
+## Reproduce Experiment Result in Table 2
 
 To reproduce our result in Table 2 for the `Trans` benchmarks,
 run the following commands:
@@ -55,7 +54,7 @@ The experiment result in the CSV file differs slightly from Table 2 due to bug f
 We also include a CSV file named `hscc2025_trans.expected.csv` for reference which contains the latest results collected under our setup.
 
 
-### Reproduce Table 3
+## Reproduce Experiment Result in Table 3
 
 To reproduce our result in Table 3 for the `Polys` benchmarks with the radius of the region of interest X set to `r=1`,
 run the following commands:
