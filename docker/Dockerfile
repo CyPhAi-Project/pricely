@@ -42,7 +42,7 @@ RUN addgroup --system app && adduser --system --group app
 USER app
 WORKDIR /home/app
 
-ENV PRICELY_REPO_URL=https://git.iimc.kyoto-u.ac.jp/chiao709hsieh/pricely.git#hscc2025
+ENV PRICELY_REPO_URL=git@github.com:CyPhAi-Project/pricely.git#hscc2025
 ADD --chown=app:app ${PRICELY_REPO_URL} ./pricely-repo
 RUN python3 -m pip install --no-cache-dir --no-warn-script-location --upgrade pip && \
     python3 -m pip install --no-cache-dir --no-warn-script-location -r ./pricely-repo/docker/requirements.txt

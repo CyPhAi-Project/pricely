@@ -1,8 +1,12 @@
 # Prepare the docker image and container for repeatability
 
 ## Build the docker image
+The build command below only works for **project members** with [proper setup of SSH keys on GitHub](https://docs.github.com/en/authentication/connecting-to-github-with-ssh).
+It requires accessing the GitHub repository through SSH.
+Replace `<path/to/your_ssh_key>` to the path to your SSH key file.
+For Linux systems, the file is usually stored as `~/.ssh/id_ed25519` or `~/.ssh/id_rsa` on your host machine.
 ```shell
-docker build --tag hscc2025 .
+docker build --ssh default=<path/to/your_ssh_key> --tag hscc2025 .
 ```
 
 ## Save the docker image as a gzip file
