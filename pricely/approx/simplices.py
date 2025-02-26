@@ -156,7 +156,7 @@ class SimplicialComplex(PApproxDynamic):
 
         self._x_roi = x_roi
         self._u_roi = u_roi
-        self._triangulation = Delaunay(points=x_values, incremental=True)
+        self._triangulation = Delaunay(points=x_values, incremental=True, qhull_options="Q12")
         self._u_values = u_values
         self._f_bbox =  f_bbox
         self._lip_bbox = lip_bbox
