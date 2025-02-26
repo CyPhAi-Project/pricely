@@ -92,7 +92,7 @@ class QuadraticLearner(PLyapunovLearner):
                 # Optimize the logarithmic barrier objective
                 prob = cp.Problem(obj)
                 prob.solve(solver)
-                if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                if prob.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE, cp.USER_LIMIT]:
                     assert not np.any(np.isnan(self._sym_mat.value))
                     return [prob.objective.value/len(x)]  # type: ignore
                 else:
