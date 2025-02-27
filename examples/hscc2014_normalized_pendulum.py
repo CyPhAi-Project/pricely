@@ -7,20 +7,25 @@ from dreal import sin as Sin, Expression as Expr, Variable  # type: ignore
 import numpy as np
 from typing import Sequence
 
-
+ # System dimension
 X_DIM = 2
+
+ # Specify the region of interest by X_NORM_LB ≤ ‖x‖ ≤ X_NORM_UB
 X_NORM_UB = 1.0
 X_NORM_LB = 0.1
+
+# Specify a rectangular domain covering the region of interest
 X_LIM = np.array([
     [-X_NORM_UB, -X_NORM_UB],  # Lower bounds
     [+X_NORM_UB, +X_NORM_UB]  # Upper bounds
 ])
 assert X_LIM.shape == (2, X_DIM)
-ABS_X_LB = 2**-6
 
 
 def f_bbox(x: np.ndarray):
-    # Actual dynamical system
+    """ Black-box system dynamics
+    Take an array of states and return the value of the derivate of states
+    """
     assert x.shape[1] == X_DIM
     x0, x1 = x[:, 0], x[:, 1]
     dxdt = np.zeros_like(x)
@@ -30,15 +35,17 @@ def f_bbox(x: np.ndarray):
 
 
 def calc_lip_bbox(x_regions: np.ndarray) -> np.ndarray:
-    """
-    Use Frobenious Norm of the Jacobian matrix to provide a local Lipschitz constant
+    """ Calculate Lipschitz bounds for given regions
+    Use Frobenious Norm of the Jacobian matrix to provide a Lipschitz constant
     Jacobian of RHS = [
         [        0,  1],
         [ -cos(x1), -1]]
-    We further upper bound Frobenious Norm by replacing cos(x1) with 1.
+    We further upper bound cos(x1) with 1.
+    The Lipschitz bound by Frobenious Norm is sqrt(1² + (-1)² + (-1)²) = sqrt(3).
     """
     assert x_regions.ndim == 3
     assert x_regions.shape[1] == 3 and x_regions.shape[2] == X_DIM
+    ## Use the same Lipschitz bound for all regions
     res = np.full(shape=x_regions.shape[0], fill_value=np.sqrt(3.0))
     assert res.ndim == 1 and res.shape[0] == x_regions.shape[0]
     return res
