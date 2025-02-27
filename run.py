@@ -18,7 +18,8 @@ validate_lip_bbox.execute(mod, MAX_SAMPLES)
 stats = run_cegus.execute(mod, out_dir=OUT_DIR, delta=DELTA, max_num_samples=MAX_SAMPLES)
 cand = stats.last_candidate
 
-if cand is not None:
+# Validate the synthesized Lyapunov function if the white-box model (RHS of ODE) is given.
+if cand is not None and hasattr(mod, "f_expr"):
     validate_lya_cand.execute(mod, cand)
 
 if mod.X_DIM == 2:
