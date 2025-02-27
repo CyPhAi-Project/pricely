@@ -28,7 +28,7 @@ class Stats(NamedTuple):
 def viz_regions_2d(ax, mod, last_approx, cex_regions):
     print(" Plotting verified regions ".center(NCOLS, "="))
     x_lim = mod.X_LIM
-    abs_x_lb = mod.ABS_X_LB
+    abs_x_lb = getattr(mod, "ABS_X_LB", 0.0)
     ax.set_xlim(*(1.0625*x_lim[:, 0]))
     ax.set_ylim(*(1.0625*x_lim[:, 1]))
 
@@ -37,7 +37,7 @@ def viz_regions_2d(ax, mod, last_approx, cex_regions):
 
     if hasattr(mod, "X_NORM_LB"):
         ax.add_patch(Circle((0, 0), mod.X_NORM_LB, color='r', fill=False))
-    else:
+    elif abs_x_lb > 0.0:
         ax.add_patch(Rectangle(
             (-abs_x_lb, -abs_x_lb), 2*abs_x_lb, 2*abs_x_lb, color='r', fill=False))
 
@@ -91,7 +91,7 @@ def execute(mod, out_dir: Optional[Path]=None,
         n_jobs: int=16) -> Stats:
     x_roi = ROI(
         x_lim=mod.X_LIM,
-        abs_x_lb=mod.ABS_X_LB,
+        abs_x_lb=getattr(mod, "ABS_X_LB", 0.0),
         x_norm_lim=(getattr(mod, "X_NORM_LB", 0.0),
                     getattr(mod, "X_NORM_UB", np.inf)))
 

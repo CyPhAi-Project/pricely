@@ -67,7 +67,7 @@ class SMTVerifier(PLyapunovVerifier):
             config: Union[Config, ConfigTuple] = ConfigTuple()) -> None:
         x_lim, abs_x_lb, (x_norm_lb, x_norm_ub) = x_roi
         assert x_lim.shape[0] == 2 and x_lim.shape[1] >= 1
-        assert np.all(np.array(abs_x_lb) > 0.0) and np.all(np.isfinite(abs_x_lb))
+        assert np.all(np.array(abs_x_lb) >= 0.0) and np.all(np.isfinite(abs_x_lb))
         assert 0.0 <= x_norm_lb <= x_norm_ub
 
         self._x_roi = x_roi

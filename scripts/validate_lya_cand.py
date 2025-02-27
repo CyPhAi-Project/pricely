@@ -10,8 +10,8 @@ def execute(mod, cand: PLyapunovCandidate, dreal_config: Config = Config()):
 
     x_roi = ROI(
     x_lim=mod.X_LIM,
-    abs_x_lb=mod.ABS_X_LB,
-    x_norm_lim=(getattr(mod, "X_NORM_LB", 0.0),
+        abs_x_lb=getattr(mod, "ABS_X_LB", 0.0),
+        x_norm_lim=(getattr(mod, "X_NORM_LB", 0.0),
                     getattr(mod, "X_NORM_UB", np.inf)))
 
     x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(mod.X_DIM)]
