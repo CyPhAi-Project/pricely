@@ -79,7 +79,7 @@ We also include a CSV file named `hscc2025_polys.expected.csv` for reference whi
 To run the experiment with the radius set to `r=5` of `r=10`,
 modify the constant `X_NORM_UB` in each of the benchmark file `examples/*.py`.
 
-**NOTE:** Due to the excessive execution time (>4 hrs) for the `poly_1` benchmark,
+**NOTE:** Due to the excessive execution time (>1 hr on workstation) for the `poly_1` benchmark,
 we commented it out in `run_hscc2025_polys.py`.
 You can uncomment it to run the experiment.
 
