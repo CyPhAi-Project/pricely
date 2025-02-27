@@ -41,7 +41,7 @@ for mod in polys_cases:
     except multiprocessing.TimeoutError:
         stats = run_cegus.Stats(
             cegus_status="TIME_LIMIT", cegus_time_usage=nan,
-            last_epoch=-1, last_candidate=None,
+            last_epoch=-2, last_candidate=None,
             num_samples_learn=-1,num_samples=-1,  num_regions=-1)
         print(f"Reach time timit: {TIMEOUT} seconds")
 
