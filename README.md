@@ -169,17 +169,18 @@ The project is organized into the following main components:
 
 ### Core Implementation (`pricely/`)
 - `cegus_lyapunov.py`: Main algorithm for searching Lyapunov functions
-- `candidates.py`: Generation of candidate functions
-- `gen_cover.py`: Cover generation algorithms
+- `candidates.py`: Classes for defining kind of candidate Lyapunov functions
+- `gen_cover.py`: Heuristics to generate an initial cover of the region of interest
 - `utils.py`: Utility functions
 
 ### Approximation Methods (`pricely/approx/`)
-- `boxes.py`: Box-based approximation techniques
-- `simplices.py`: Simplex-based approximation methods
+Contains different strategies to cover the region of interest and construct approximations/upperbounds of the Lie derivatie of Lypunov candidates accordingly.
+- `boxes.py`: Build a cover using hyperboxes
+- `simplices.py`: Build a cover using simplices, i.e., triangulation
 
 ### Learning Components (`pricely/learner/`)
 - `cvxpy.py`: CVXPY-based optimization learner
-- `mock.py`: Mock implementation for testing purposes
+- `mock.py`: A mock learner always proposing the same candidate for testing purposes
 
 ### Verification Tools (`pricely/verifier/`)
 - `smt_dreal.py`: SMT verification using dReal solver
@@ -188,7 +189,7 @@ The project is organized into the following main components:
 Contains various example scripts demonstrating different use cases of the library.
 
 ### Analysis and Visualization Scripts (`scripts/`)
-Tools for analyzing results and visualizing data.
+Scripts for running the main synthesis algorithm, analyzing results, and visualizing data.
 
 ### Docker Setup (`docker/`)
 Docker configuration for reproducible environment setup.
