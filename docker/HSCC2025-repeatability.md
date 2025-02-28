@@ -16,6 +16,17 @@ In the rest of the sections, we assume the user is executing commands with the `
 The source code of our prototype tool is publicly available at https://github.com/CyPhAi-Project/pricely.
 
 
+## System Requirements
+
+We have tested our docker image on the following combinations of platforms:
+
++ Docker Desktop 4.37.1 for Windows with the following command line interfaces for docker commands
+  - `bash` in Ubuntu 20.04 through Windows Subsystem for Linux
+  - Windows PowerShell
++ Docker 24.0.7 on Ubuntu 22.04
++ Docker Desktop 4.37.2 (179585) for Mac with Docker Engine 27.4.0
+
+
 ## Obtain Docker Image and Create Docker Container
 
 We provide a compressed file `hscc2025_latest.tar.gz` on [Google Drive] for loading our docker image.
@@ -180,12 +191,3 @@ To add a new example system, follow these steps:
     ```sh
     python3 run.py
     ```
-
-
-## System Requirements
-
-We have tested our docker image on the following combinations of platforms:
-
-+ Docker Desktop 4.37.1 for Windows and Ubuntu 20.04 through Windows Subsystem for Linux
-+ Docker 24.0.7 and Ubuntu 22.04
-+ Docker Desktop 4.37.2 (179585) for Mac with Docker Engine 27.4.0
