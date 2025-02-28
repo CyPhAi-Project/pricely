@@ -152,7 +152,7 @@ To add a new example system, follow these steps:
     ```python
     def f_bbox(x: np.ndarray):
         """ Black-box system dynamics
-        Takes an array of states and return the value of the derivate of states
+        Takes an array of states and return the value of the derivative of states
         """
         x0, x1 = x[:, 0], x[:, 1]
         dxdt = np.zeros_like(x)

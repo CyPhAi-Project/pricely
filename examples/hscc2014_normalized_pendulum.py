@@ -24,7 +24,7 @@ assert X_LIM.shape == (2, X_DIM)
 
 def f_bbox(x: np.ndarray):
     """ Black-box system dynamics
-    Take an array of states and return the value of the derivate of states
+    Take an array of states and return the value of the derivative of states
     """
     assert x.shape[1] == X_DIM
     x0, x1 = x[:, 0], x[:, 1]
