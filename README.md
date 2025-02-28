@@ -163,6 +163,35 @@ To add a new example system, follow these steps:
     python3 run.py
     ```
 
+## Code Structure
+
+The project is organized into the following main components:
+
+### Core Implementation (`pricely/`)
+- `cegus_lyapunov.py`: Main algorithm for searching Lyapunov functions
+- `candidates.py`: Generation of candidate functions
+- `gen_cover.py`: Cover generation algorithms
+- `utils.py`: Utility functions
+
+### Approximation Methods (`pricely/approx/`)
+- `boxes.py`: Box-based approximation techniques
+- `simplices.py`: Simplex-based approximation methods
+
+### Learning Components (`pricely/learner/`)
+- `cvxpy.py`: CVXPY-based optimization learner
+- `mock.py`: Mock implementation for testing purposes
+
+### Verification Tools (`pricely/verifier/`)
+- `smt_dreal.py`: SMT verification using dReal solver
+
+### Example Applications (`examples/`)
+Contains various example scripts demonstrating different use cases of the library.
+
+### Analysis and Visualization Scripts (`scripts/`)
+Tools for analyzing results and visualizing data.
+
+### Docker Setup (`docker/`)
+Docker configuration for reproducible environment setup.
 
 ## License
 This project is licensed under the University of Illinois/NCSA Open Source License. See the LICENSE file for details.
