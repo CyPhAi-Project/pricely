@@ -174,7 +174,7 @@ The project is organized into the following main components:
 - `utils.py`: Utility functions
 
 ### Approximation Methods (`pricely/approx/`)
-Contains different strategies to cover the region of interest and construct approximations/upperbounds of the Lie derivatie of Lypunov candidates accordingly.
+Contains different strategies to cover the region of interest and construct approximations/upper bounds of the Lie derivative of Lyapunov candidates accordingly.
 - `boxes.py`: Build a cover using hyperboxes
 - `simplices.py`: Build a cover using simplices, i.e., triangulation
 

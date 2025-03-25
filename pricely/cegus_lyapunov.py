@@ -199,7 +199,7 @@ def verify_delta_provability(
         new_verified_regions = set()
         cex_regions.clear()
         with Pool(n_jobs) as p:
-            # XXX Need to store and maintain the index j for retriving the same region again
+            # XXX Need to store and maintain the index j for retrieving the same region again
             future_list = []
             for j in tqdm(range(len(curr_approx)),
                           desc="Check cache", ascii=True, leave=None, position=2, ncols=NCOLS):
