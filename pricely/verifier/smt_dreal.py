@@ -187,32 +187,3 @@ class SMTVerifier(PLyapunovVerifier):
         ## Add the region Rj
         region_pred_list.append(f_approx_j.in_domain_pred(x_vars))
         return logical_and(*region_pred_list, smt_query)
-
-
-def test_substitution():
-    from pricely.learner.mock import MockQuadraticLearner
-    from pricely.approx.boxes import ConstantApprox
-    X_LIM = np.array([
-        [-1, -1.5, -3],
-        [+1, +1.5, +3]
-    ])
-    X_DIM = X_LIM.shape[1]
-    U_DIM = 2
-    x_vars = [Variable(f"x{pretty_sub(i)}") for i in range(X_DIM)]
-
-    pd_mat = np.eye(X_DIM)
-    ctrl_mat = -np.eye(U_DIM, X_DIM)
-    learner = MockQuadraticLearner(pd_mat=pd_mat, ctrl_mat=ctrl_mat)
-
-    x_roi = ROI(x_lim=X_LIM, abs_x_lb=2**-4)
-    verifier = SMTVerifier(x_roi, u_dim=U_DIM)
-    verifier.set_lyapunov_candidate(learner.get_candidate())
-
-    region = np.vstack((np.zeros(X_DIM), X_LIM)).reshape((3, X_DIM))
-    approx = ConstantApprox(region, ctrl_mat @ region[0], region[0], 1.0)
-    verif_conds = verifier._inst_verif_conds(approx, x_vars)
-    print(verif_conds, sep='\n')
-
-
-if __name__ == "__main__":
-    test_substitution()
